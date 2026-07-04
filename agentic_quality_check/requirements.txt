@@ -1,0 +1,24 @@
+# Core dependencies
+streamlit==1.29.0
+pandas==2.1.4
+numpy==1.26.2
+
+# PDF processing
+PyPDF2==3.0.1
+
+# RAG and embeddings
+sentence-transformers==2.2.2
+faiss-cpu==1.8.0
+
+# LLM inference
+transformers==4.36.0
+torch==2.2.0
+
+# LangChain ecosystem - Multi-agent orchestration
+langchain
+langchain-core
+langchain-community
+langgraph
+
+# Utilities
+python-dotenv==1.0.0
