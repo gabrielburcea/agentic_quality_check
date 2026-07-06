@@ -100,10 +100,10 @@ def parse_pdf(
 def _parse_with_pdfplumber(pdf_path: str, extract_tables: bool = False) -> Dict:
 
     """
-    Parse ODF using pdfplumber wiht CHARACTER-LEVEL font detection.
+    Parse PDF using pdfplumber wiht CHARACTER-LEVEL font detection.
 
     Key Learning:
-        Some PDF's (esp Microsoft Word) don't explose font metadata via page.extract_words(), 
+        Some PDF's (esp Microsoft Word) don't expose font metadata via page.extract_words(), 
         but expose it via page.chars(). We extract characters, reconstruct lines, and identify headlines by predominant font size per line. 
 
     Process:
@@ -310,7 +310,7 @@ def _process_and_rank_headlines(headlines: List[Dict], full_text: str) -> List[D
     processed = []
 
     for idx, headline in enumerate(headlines):
-        # Assign leavel based on font size
+        # Assign level based on font size
         if headline['font_size'] >= FONT_SIZE_THRESHOLDS['h1_min']:
             level = 1 #1
 
@@ -399,7 +399,7 @@ def _generate_document_id(pdf_path: str) -> str:
     return f"{filename}_{timestamp}"
 
 ######################\
-#### PUBLIC AP. ######
+#### PUBLIC API. ######
 #####################
 
 def extract_headlines(pdf_path: str, parser: str = 'pdfplumber') -> List[Dict]:
