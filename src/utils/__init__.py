@@ -1,45 +1,23 @@
 """
-src package for agentic quality system checl
+Utility functions for agentic quality check system.
+
 This package contains:
-- config: Configuration and paths
-- agents: Multi-agent system component
-- rag: RAG retrieval and vector store 
-- utils: Utility function 
+- pdf_parser: PDF parsing with headline extraction
 """
-from .config import (
-    PATHS, 
-    MODELS, 
-    UC_CONFIG, 
-    DATABRICKS_MODELS, 
-    FREE_MODELS, 
-    ACTIVE_MODELS, 
-    MAPPING_CONFIG, 
-    AGENT_CONFIG, 
-    STREAMLIT_CONFIG, 
-    DATBRICKS_FEATURES,  
-    RAG_CONFIG, 
-    get_volume_path, 
-    get_active_models, 
-    switch_to_free_models,
-    switch_to_databricks_models
+from .pdf_parser import (
+    parse_pdf,
+    extract_headlines,
+    get_headline_by_page, 
+    FONT_SIZE_THRESHOLDS,
+    HEADLINE_CRITERIA,
+    HEADLINE_PATTERNS
+)
 
 __all__ = [
-    'PATHS', 
-    'MODELS', 
-    'UC_CONFIG', 
-    'DATABRICKS_MODELS', 
-    'FREE_MODELS', 
-    'ACTIVE_MODELS', 
-    'MAPPING_CONFIG', 
-    'AGENT_CONFIG', 
-    'STREAMLIT_CONFIG', 
-    'DATBRICKS_FEATURES',  
-    'RAG_CONFIG', 
-    'get_volume_path', 
-    'get_active_models', 
-    'switch_to_free_models',
-    'switch_to_databricks_models'
-
+    'parse_pdf',
+    'extract_headlines',
+    'get_headline_by_page',
+    'FONT_SIZE_THRESHOLDS',
+    'HEADLINE_CRITERIA',
+    'HEADLINE_PATTERNS'
 ]
-# Package metadata
-__version__ = "0.1.0"
