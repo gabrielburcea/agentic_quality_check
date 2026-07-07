@@ -42,7 +42,7 @@ if src_dir not in sys.path:
 
 # import normally
 from utils import parse_pdf, get_csv_metadata
-from components import render_headline_tree, render_column_preview, render_mapping_controls
+from .components import render_headline_tree, render_column_preview, render_mapping_controls
 
 
 
