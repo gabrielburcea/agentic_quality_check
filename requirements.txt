@@ -1,24 +1,47 @@
-# Core dependencies
+# ========================================
+# Agentic Quality Check - Requirements
+# ========================================
+# Current Layer: Layer 3 (Mapping UI)
+# Dependencies below are for local testing of the Streamlit app
+# Future layers (RAG, agents) are commented out
+# ========================================
+
+# Core dependencies (Layer 3 - Mapping UI)
 streamlit==1.29.0
 pandas==2.1.4
 numpy==1.26.2
 
-# PDF processing
-PyPDF2==3.0.1
+# PDF processing (Layer 1 - Document Ingestion)
+pdfplumber>=0.10.0
+
+# ========================================
+# Future dependencies (Layer 4 - Agent Orchestration)
+# Uncomment when building RAG/agent layers
+# ========================================
 
 # RAG and embeddings
-sentence-transformers==2.2.2
-faiss-cpu==1.8.0
+# sentence-transformers==2.2.2
+# faiss-cpu==1.8.0
 
 # LLM inference
-transformers==4.36.0
-torch==2.2.0
+# transformers==4.36.0
+# torch==2.2.0
 
 # LangChain ecosystem - Multi-agent orchestration
-langchain
-langchain-core
-langchain-community
-langgraph
+# langchain
+# langchain-core
+# langchain-community
+# langgraph
 
 # Utilities
 python-dotenv==1.0.0
+
+# ========================================
+# Standard library modules (no installation needed)
+# ========================================
+# - typing
+# - json
+# - datetime
+# - sys
+# - os
+# - re
