@@ -9,6 +9,7 @@ scratch/**
 **/explorations/**
 **/!explorations/README.md
 not_for_git/
+streamlit_log/
 
 # Virtual environments
 venv/
