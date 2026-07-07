@@ -9,3 +9,17 @@ scratch/**
 **/explorations/**
 **/!explorations/README.md
 not_for_git/
+
+# Virtual environments
+venv/
+venv_qualcheck/
+.venv/
+env/
+ENV/
+.env
+.venv.local
+
+# Virtual environment related
+*.egg-info/
+dist/
+build/
