@@ -28,22 +28,24 @@ from collections import defaultdict
 
 FONT_SIZE_THRESHOLDS = {
     'h1_min': 16.0,  # Main headlines anything >= 16pt might be a headline
-    'h2_min': 13.0,  # Sub-headlines (13-16pt)
-    'body_max': 12.5,  # Body text is ussually <= 12.5pt
-    'min_headline': 13.0  # Minimum font size for headlines
+    'h2_min': 12.0,  # Sub-headlines (12-16pt) - LOWERED to capture 12pt bold
+    'h3_min': 10.0,  # Smaller subheadlines (10-12pt) - for edge cases
+    'body_max': 12.5,  # Body text is usually <= 12.5pt
+    'min_headline': 11.5,  # Minimum font size for headlines - LOWERED TO 11.5
+    'max_body_sentence': 15.0  # Text 14-15pt that's not bold is body text
 }
 
 # A phrase must meet these criteria to be considered
 HEADLINE_CRITERIA = {
-    'min_words': 2, # Executive Summary = 2 words 
-    'max_words': 20, # Longer than 20 words = probably a paragraph
-    'min_chars': 5, # Minimum length to avoid noise like "A" or "1"
-    'max_consecutive_lines': 100 # Headlines rarely span more than 3 lines
+    'min_words': 2,  # Executive Summary = 2 words 
+    'max_words': 10,  # REDUCED from 20 to 10 - real headlines are short
+    'min_chars': 5,  # Minimum length to avoid noise like "A" or "1"
+    'max_consecutive_lines': 100,  # Headlines rarely span more than 3 lines
+    'min_spacing': 25.0  # Minimum spacing before line to be considered headline
 }
 
-# Common patterns is statistical report headlines:
+# Common patterns in statistical report headlines:
 
-# Common headline patterns in statistical reports
 # Common headline patterns in statistical reports
 # These patterns are GENERIC and work across different report types:
 # - Government stats, research papers, surveys, economic indicators, etc.
@@ -84,7 +86,7 @@ def parse_pdf(
         parser(str): 'pdfplumber' or databricks extract_tables (bool): Whether to databricks extract_tables
         use_databricks(bool): Shortcut for parser = 'databricks'
     Returns:
-        dict: Parse documetn with unified structure
+        dict: Parse document with unified structure
     """
     if use_databricks or parser == 'databricks':
         return _parse_with_databricks_ai(pdf_path)
@@ -100,7 +102,7 @@ def parse_pdf(
 def _parse_with_pdfplumber(pdf_path: str, extract_tables: bool = False) -> Dict:
 
     """
-    Parse PDF using pdfplumber wiht CHARACTER-LEVEL font detection.
+    Parse PDF using pdfplumber with CHARACTER-LEVEL font detection.
 
     Key Learning:
         Some PDF's (esp Microsoft Word) don't expose font metadata via page.extract_words(), 
@@ -110,7 +112,7 @@ def _parse_with_pdfplumber(pdf_path: str, extract_tables: bool = False) -> Dict:
         1. Extract characters with font metadata (size, position, font name)
         2. Group characters into lines (same y-position)
         3. Calculate average font size per line
-        4. Lines with font >= 13pt = headline candidates
+        4. Lines with font >= 11.5pt = headline candidates
         5. Validate and rank headlines by size
         6. Extract body text and tables
     """
@@ -158,7 +160,7 @@ def _parse_with_pdfplumber(pdf_path: str, extract_tables: bool = False) -> Dict:
             result['headlines'] = _process_and_rank_headlines(page_headlines, result['body_text'])
         return result
     except FileNotFoundError:
-        raise FileNotFoundError(f"PDF file not fount: {pdf_path}")
+        raise FileNotFoundError(f"PDF file not found: {pdf_path}")
     except Exception as e:
         raise RuntimeError(f"Error parsing PDF: {e}")
 
@@ -172,7 +174,7 @@ def _extract_headlines_from_page_chars(page, page_num: int) -> List[Dict]:
         2. Group characters by line (same y-position ± 2px)
         3. Reconstruct text for each line
         4. Calculate average font size per line
-        5. Lines with avg_size >= 13pt = headline candidates
+        5. Lines with avg_size >= 11.5pt = headline candidates
         6. Validate and return
     
     WHY THIS WORKS:
@@ -190,7 +192,7 @@ def _extract_headlines_from_page_chars(page, page_num: int) -> List[Dict]:
     lines_by_y = defaultdict(list)
 
     for char in chars:
-        # Round y-position to group chars on same line (+- 2px tolerace)
+        # Round y-position to group chars on same line (+- 2px tolerance)
         y = round(char.get('top', 0) / 2) * 2
 
         lines_by_y[y].append({
@@ -199,18 +201,20 @@ def _extract_headlines_from_page_chars(page, page_num: int) -> List[Dict]:
             'font': char.get('fontname', ''),
             'x': char.get('x0', 0)
         })
+    
     headlines = []
+    prev_y = None  # Initialize before loop
 
     for y in sorted(lines_by_y.keys()):
-        line_chars = sorted(lines_by_y[y], key= lambda c: c['x']) # Sort left-to-right
+        line_chars = sorted(lines_by_y[y], key=lambda c: c['x'])  # Sort left-to-right
 
-        # Reconstruction text
+        # Reconstruct text
         line_text = ''.join([c['text'] for c in line_chars]).strip()
 
         if not line_text or len(line_text) < HEADLINE_CRITERIA['min_chars']:
             continue
                           
-        #Calculate average font size for this line
+        # Calculate average font size for this line
         sizes = [c['size'] for c in line_chars if c['size'] > 0]
 
         if not sizes:
@@ -218,16 +222,52 @@ def _extract_headlines_from_page_chars(page, page_num: int) -> List[Dict]:
             
         avg_size = sum(sizes) / len(sizes)
 
-        # Chec if this line is a headline
+        # Calculate spacing from previous line (for isolation check)
+        spacing = y - prev_y if prev_y else 0
+
+        # Get most common font name to check if bold
+        font_counts = {}
+        for c in line_chars:
+            font = c['font']
+            font_counts[font] = font_counts.get(font, 0) + 1
+        most_common_font = max(font_counts, key=font_counts.get) if font_counts else ""
+        is_bold = 'Bold' in most_common_font or 'bold' in most_common_font.lower()
+
+        # Check if this line is a headline
         if avg_size >= FONT_SIZE_THRESHOLDS['min_headline']:
+            # REJECT: 14-15pt non-bold text (body text in special sections)
+            if 14.0 <= avg_size <= FONT_SIZE_THRESHOLDS['max_body_sentence'] and not is_bold:
+                prev_y = y
+                continue
+
+            # REJECT: 12pt text that's NOT bold (regular body text)
+            if avg_size < 13.0 and not is_bold:
+                prev_y = y
+                continue
+
+            # REJECT: 12pt bold with >10 words (emphasized body sentences)
+            word_count = len(line_text.split())
+            if avg_size < 13.0 and is_bold and word_count > HEADLINE_CRITERIA['max_words']:
+                prev_y = y
+                continue
+
+            # REJECT: Lines without enough spacing above (not isolated)
+            if spacing > 0 and spacing < HEADLINE_CRITERIA['min_spacing']:
+                prev_y = y
+                continue
+
             # Validate as a headline
             if _is_valid_headline(line_text):
                 headlines.append({
                     'text': line_text,
                     'page': page_num,
-                    'font_size': avg_size, 
-                    'raw_confidence': _calculate_headline_confidence(line_text, avg_size)
+                    'font_size': avg_size,
+                    'is_bold': is_bold, 
+                    'spacing': spacing, 
+                    'raw_confidence': _calculate_headline_confidence(line_text, avg_size, is_bold, spacing)
                 })
+        
+        prev_y = y
     return headlines
 
 def _is_valid_headline(text: str) -> bool:
@@ -235,11 +275,12 @@ def _is_valid_headline(text: str) -> bool:
     Validate whether text is a true headline. 
 
     Checks: 
-    1. Word count: 2-20 words
-    2. Character count: >= 5 chrs
+    1. Word count: 2-10 words (REDUCED from 20)
+    2. Character count: >= 5 chars
     3. Patterns matching (capital start, numbered, etc)
     4. Not all caps (usually emphasis)
     5. Not all lowercase
+    6. Not ending with incomplete sentence markers
     """
     if not text or not text.strip():
         return False
@@ -252,6 +293,25 @@ def _is_valid_headline(text: str) -> bool:
     if len(text) < HEADLINE_CRITERIA['min_chars']:
         return False
     
+    # REJECT: Incomplete sentences (end with conjunctions, prepositions, etc.)
+    incomplete_endings = [
+        ', with an',  # "London was highest, with an"
+        'and key',
+        'in the', 
+        'by the', 
+        'of the', 
+        'for the', 
+        'to the',
+        'from the',
+        ', and', 
+        ', followed'
+    ]
+
+    text_lower = text.strip().lower()
+    for ending in incomplete_endings:
+        if text_lower.endswith(ending):
+            return False
+
     # Pattern matching 
     matches_pattern = any(
         re.match(pattern, text.strip())
@@ -265,34 +325,48 @@ def _is_valid_headline(text: str) -> bool:
 
     return (matches_pattern or starts_with_capital) and not is_all_caps and not is_all_lower
 
-def _calculate_headline_confidence(text: str, font_size: float) -> float:
-
+def _calculate_headline_confidence(text: str, font_size: float, is_bold: bool = False, spacing: float = 0) -> float:
     """
     Calculate confidence score (0.0 to 1.0)
 
-   
-      Scoring:
+    Scoring:
         Base: 0.5
         + 0.3 if font >= 16pt (H1)
-        + 0.2 if font >= 13pt (H2)
+        + 0.2 if font >= 12pt (H2) - UPDATED
         + 0.1 if 2-8 words (ideal length)
         + 0.1 if matches pattern
+        + 0.15 if bold
+        + 0.15 if large spacing (>30pt)
         Max: 1.0
     
     """
     confidence = 0.5
 
+    # Font size scoring
     if font_size >= FONT_SIZE_THRESHOLDS['h1_min']: 
         confidence += 0.3
     elif font_size >= FONT_SIZE_THRESHOLDS['h2_min']:
         confidence += 0.2
 
+    # Word count scoring
     word_count = len(text.split())
     if 2 <= word_count <= 8:
         confidence += 0.1
 
+    # Pattern matching scoring
     if any(re.match(pattern, text.strip()) for pattern in HEADLINE_PATTERNS):
         confidence += 0.1
+    
+    # Bold font scoring (NEW)
+    if is_bold: 
+        confidence += 0.15
+    
+    # Spacing scoring (NEW) - isolated headlines have large spacing
+    if spacing >= 30:
+        confidence += 0.15
+    elif spacing >= 25:
+        confidence += 0.10
+
     return min(confidence, 1.0)
 
 def _process_and_rank_headlines(headlines: List[Dict], full_text: str) -> List[Dict]:
@@ -301,8 +375,8 @@ def _process_and_rank_headlines(headlines: List[Dict], full_text: str) -> List[D
     
     Hierarchy:
         - Font >= 16pt → Level 1 (H1)
-        - Font 13-16pt → Level 2 (H2)
-        - Font < 13pt → Level 3 (H3)
+        - Font 12-16pt → Level 2 (H2)
+        - Font < 12pt → Level 3 (H3)
     """
     if not headlines:
         return []
@@ -312,12 +386,12 @@ def _process_and_rank_headlines(headlines: List[Dict], full_text: str) -> List[D
     for idx, headline in enumerate(headlines):
         # Assign level based on font size
         if headline['font_size'] >= FONT_SIZE_THRESHOLDS['h1_min']:
-            level = 1 #1
+            level = 1  # H1
 
         elif headline['font_size'] >= FONT_SIZE_THRESHOLDS['h2_min']:
-            level = 2 # H2
+            level = 2  # H2
         else:
-            level = 3 # H3
+            level = 3  # H3
 
         # Extract paragraphs between this headline and next 
 
@@ -333,7 +407,9 @@ def _process_and_rank_headlines(headlines: List[Dict], full_text: str) -> List[D
             'text': headline['text'], 
             'level': level, 
             'page': headline['page'], 
-            'confidence': headline['raw_confidence'], 
+            'confidence': headline['raw_confidence'],
+            'is_bold': headline.get('is_bold', False),  # NEW
+            'spacing': headline.get('spacing', 0),  # NEW
             'paragraphs': paragraphs
         })
     
@@ -346,9 +422,9 @@ def _extract_paragraphs_for_headline(
 ) -> List[str]:
     
     """
-    Extract pharagraphs between headline and the next.
+    Extract paragraphs between headline and the next.
     
-    Finds content after current headline up to next headline (or end of doc), then splits into paragraphs (seraparated by double newlines).
+    Finds content after current headline up to next headline (or end of doc), then splits into paragraphs (separated by double newlines).
     
     """
     try: 
@@ -382,45 +458,43 @@ def _parse_with_databricks_ai(pdf_path: str) -> Dict:
     """
     Parse PDF using Databricks ai_parse_document [AI-powered paid]. 
 
-    Placeholder for future implementation/
+    Placeholder for future implementation.
     """
     raise NotImplementedError(
         "Databricks ai_parse_document not yet implemented. "
         "Use parser='pdfplumber' for now."
-        
-        )
+    )
     
 #### UTILITY FUNCTIONS #######
 
 def _generate_document_id(pdf_path: str) -> str:
-    """ Generate unique document ID form path + timestamp"""
+    """ Generate unique document ID from path + timestamp"""
     filename = pdf_path.split("/")[-1].replace(".pdf", "")
     timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
     return f"{filename}_{timestamp}"
 
-######################\
-#### PUBLIC API. ######
-#####################
+######################
+#### PUBLIC API ######
+######################
 
 def extract_headlines(pdf_path: str, parser: str = 'pdfplumber') -> List[Dict]:
     """
-    Extract Only headlines (no body text, no tables).
+    Extract only headlines (no body text, no tables).
     
     """
-    result = parse_pdf(pdf_path, parser=parser, extract_tables = False)
+    result = parse_pdf(pdf_path, parser=parser, extract_tables=False)
     return result['headlines']
 
 def get_headline_by_page(pdf_path: str, page_num: int) -> List[Dict]:
-
     """
     Get headlines from specific page
     """
-    result = parse_pdf(pdf_path, extract_tables = False)
-    return [ h for h in result['headlines'] if h['page'] == page_num]
+    result = parse_pdf(pdf_path, extract_tables=False)
+    return [h for h in result['headlines'] if h['page'] == page_num]
 
 ###############################
-######## EXAMPLE USAGE #######
-##############################
+######## EXAMPLE USAGE ########
+###############################
 
 if __name__ == '__main__': 
     sample_pdf = '/Volumes/my_catalog/agentic_quality_check_dev/pdfs_volume/Multiplication_check.pdf'
