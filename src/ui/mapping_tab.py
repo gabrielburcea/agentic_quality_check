@@ -154,7 +154,7 @@ def render_mapping_tab(pdf_path: str = None, csv_path: str = None):
             if 'paragraphs' in selected_headline and selected_headline['paragraphs']:
                 with st.expander("Headline Context (paragraphs)", expanded=False):
                     for i, para in enumerate(selected_headline['paragraphs'][:3]):
-                        st.write(f"**Paragraph {i+1}**: {para[:200]}...")
+                        st.write(f"**Paragraph {i+1}**: {para}")
             
             st.divider()
             

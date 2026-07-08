@@ -27,7 +27,8 @@
 ┌─────────────────────────────────────────────────────────────────┐
 │  LAYER 3: HEADLINE-TO-CSV MAPPING (USER CONFIGURATION)         │
 │  ┌──────────────────────────────────────────────────────────┐  │
-│  │ Headline Selection → CSV Column Mapping → Metadata Store │  │
+│  │ Headline Selection → CSV File Mapping → Extracted Table  │  │
+│  │                      Preview in UI                        │  │
 │  └──────────────────────────────────────────────────────────┘  │
 └─────────────────────────────────────────────────────────────────┘
                               ↓
@@ -40,10 +41,24 @@
 └─────────────────────────────────────────────────────────────────┘
                               ↓
 ┌─────────────────────────────────────────────────────────────────┐
+│  LAYER 1.5: AGENTIC TABLE EXTRACTION (NEW - IN PROGRESS)      │
+│  ┌──────────────────────────────────────────────────────────┐  │
+│  │ Headline + Paragraphs + CSV Metadata                      │  │
+│  │           ↓                                               │  │
+│  │ Phi-3-Mini-4K-Instruct (3.8B)                             │  │
+│  │           ↓                                               │  │
+│  │ Generate pandas code → Validate → Execute → Extract table│  │
+│  │           ↓                                               │  │
+│  │ Save as JSON (10-50 rows, relevant columns only)         │  │
+│  └──────────────────────────────────────────────────────────┘  │
+└─────────────────────────────────────────────────────────────────┘
+                              ↓
+┌─────────────────────────────────────────────────────────────────┐
 │  LAYER 1: DOCUMENT & DATA INGESTION                            │
 │  ┌──────────────┐  ┌──────────────┐  ┌────────────────────┐   │
 │  │ PDF Upload   │  │ CSV Upload   │  │ Headline           │   │
-│  │ & Parse      │  │ & Parse      │  │ Extraction         │   │
+│  │ & Parse      │  │ & Metadata   │  │ Extraction         │   │
+│  │              │  │ Extraction   │  │                    │   │
 │  └──────────────┘  └──────────────┘  └────────────────────┘   │
 └─────────────────────────────────────────────────────────────────┘
                               ↓
@@ -219,597 +234,283 @@ result = parse_pdf(pdf_path)
 
 ---
 
-## ✅ **COMPLETED: Layer 1 - Document Ingestion**
+## ✅ **COMPLETED: Layer 1 - Document Ingestion (PDF Parser)**
 
-<table>
-<tr>
-<th width="30%">🏗️ What I Built</th>
-<th width="40%">💬 Talking Points</th>
-<th width="30%">💻 Code Snippet</th>
-</tr>
+**Status**: Fully implemented with character-level font analysis and improved headline detection logic.
 
-<!-- PDF Parser Implementation -->
-<tr>
-<td>
-
-**Character-Level PDF Parser**
-
-**Tech Stack**:
-- `pdfplumber` (primary)
-- Character-level font extraction
-- Line-based grouping
-- Font-size heuristics
-
-**Output**: 
-- Headlines with hierarchy (H1/H2/H3)
-- Page numbers
-- Paragraphs per headline
-- Confidence scores
-
-</td>
-<td>
-
-"I built a production-ready PDF parser using **pdfplumber** with character-level font analysis. The key insight: some PDFs (especially from Word) don't expose font metadata via `extract_words()`, but DO expose it via `chars()`.
-
-My algorithm:
-1. Extract all characters with font size and position
-2. Group characters by y-position (same line)
-3. Reconstruct text per line
-4. Calculate average font size per line
-5. Lines ≥13pt = headline candidates
-6. Validate using word count, patterns, and formatting rules
-
-This approach handles **real-world PDFs** where font metadata is inconsistent. I tested it on statistical reports and achieved reliable headline extraction—feeds directly into the mapping UI where users select which headlines to verify."
-
-</td>
-<td>
-
-```python
-def _extract_headlines_from_page_chars(
-    page, page_num
-):
-    """Extract headlines using 
-    character-level font metadata"""
-    
-    chars = page.chars
-    lines_by_y = defaultdict(list)
-    
-    # Group chars by line (y-position)
-    for char in chars:
-        y = round(char['top'] / 2) * 2
-        lines_by_y[y].append({
-            'text': char['text'],
-            'size': char['size'],
-            'font': char['fontname']
-        })
-    
-    headlines = []
-    for y in sorted(lines_by_y.keys()):
-        line_chars = sorted(
-            lines_by_y[y], 
-            key=lambda c: c['x']
-        )
-        line_text = ''.join(
-            [c['text'] for c in line_chars]
-        ).strip()
-        
-        # Calculate avg font size
-        sizes = [c['size'] for c in line_chars]
-        avg_size = sum(sizes) / len(sizes)
-        
-        # Check if headline (≥13pt)
-        if avg_size >= 13.0:
-            if _is_valid_headline(line_text):
-                headlines.append({
-                    'text': line_text,
-                    'page': page_num,
-                    'font_size': avg_size,
-                    'confidence': 
-                        _calculate_confidence(
-                            line_text, avg_size
-                        )
-                })
-    
-    return headlines
-```
-
-</td>
-</tr>
-
-<!-- Headline Validation -->
-<tr>
-<td>
-
-**Headline Validation Logic**
-
-**Criteria**:
-- Word count: 2-20 words
-- Min 5 characters
-- Pattern matching (regex)
-- Not all-caps
-- Not all-lowercase
-
-**Patterns Matched**:
-- Starts with capital
-- Numbered sections (1., 2.)
-- Ends with: Summary, Results, Analysis, Methodology
-
-</td>
-<td>
-
-"Raw font size alone isn't enough—some PDFs have large body text or small headers. I added validation rules based on analysis of 40+ statistical reports:
-
-**Word count filter**: Headlines are typically 2-20 words. Shorter = noise ('A', '1'), longer = likely a paragraph.
-
-**Pattern matching**: Government reports follow conventions—numbered sections, specific endings like 'Summary' or 'Methodology'. My regex patterns capture these.
-
-**Formatting checks**: All-caps text is usually emphasis, not headlines. All-lowercase is body text.
-
-This multi-layered validation reduces false positives from ~40% to <5% in testing. It's tuned for statistical reports but generic enough to work across domains."
-
-</td>
-<td>
-
-```python
-HEADLINE_PATTERNS = [
-    r'^[A-Z].*',  # Capital start
-    r'^\d+\..*',  # Numbered: "1. Intro"
-    r'^(Chapter|Section|Part)\s+\d+',
-    r'.*Summary$',
-    r'.*Results$',
-    r'.*Analysis$',
-    r'.*Methodology$',
-    r'.*Introduction$',
-    r'.*Conclusion$',
-    r'.*Overview$',
-    r'.*Findings$',
-    r'.*Background.*',
-    r'.*Key.*',
-    r'About\s+the.*'
-]
-
-def _is_valid_headline(text):
-    words = text.split()
-    if not (2 <= len(words) <= 20):
-        return False
-    
-    # Pattern matching
-    matches = any(
-        re.match(p, text.strip())
-        for p in HEADLINE_PATTERNS
-    )
-    
-    # Formatting checks
-    is_valid_format = (
-        not text.isupper() and
-        not text.islower() and
-        text[0].isupper()
-    )
-    
-    return matches or is_valid_format
-```
-
-</td>
-</tr>
-
-<!-- Hierarchy Assignment -->
-<tr>
-<td>
-
-**Headline Hierarchy & Paragraph Extraction**
-
-**Levels**:
-- H1: Font ≥16pt
-- H2: Font 13-16pt  
-- H3: Font <13pt
-
-**Paragraph Extraction**:
-- Extract text between current headline and next
-- Split by double newlines
-- Clean and return as list
-
-</td>
-<td>
-
-"After identifying headlines, I assign hierarchy levels based on font size thresholds. This mimics how Word/HTML handle heading levels—larger fonts are higher in the hierarchy.
-
-For each headline, I extract the paragraphs underneath by:
-1. Finding the headline text in the full document
-2. Extracting content until the next headline (or end of doc)
-3. Splitting on double newlines to get paragraphs
-
-This structure is perfect for the RAG system—each chunk has a clear context (which headline it belongs to), making retrieval more accurate. When the agent needs to verify 'Mean score was 19.8', it retrieves the specific headline section, not random text."
-
-</td>
-<td>
-
-```python
-def _process_and_rank_headlines(
-    headlines, full_text
-):
-    processed = []
-    
-    for idx, headline in enumerate(headlines):
-        # Assign level by font size
-        if headline['font_size'] >= 16.0:
-            level = 1  # H1
-        elif headline['font_size'] >= 13.0:
-            level = 2  # H2
-        else:
-            level = 3  # H3
-        
-        # Extract paragraphs
-        next_headline = (
-            headlines[idx + 1] 
-            if idx + 1 < len(headlines) 
-            else None
-        )
-        
-        paragraphs = (
-            _extract_paragraphs_for_headline(
-                headline['text'],
-                next_headline['text'] 
-                    if next_headline else None,
-                full_text
-            )
-        )
-        
-        processed.append({
-            'id': f"h{idx + 1}",
-            'text': headline['text'],
-            'level': level,
-            'page': headline['page'],
-            'confidence': headline['confidence'],
-            'paragraphs': paragraphs
-        })
-    
-    return processed
-```
-
-</td>
-</tr>
-
-<!-- Unified Output -->
-<tr>
-<td>
-
-**Unified Output Format**
-
-**Structure**:
-```json
-{
-  "document_id": "...",
-  "filename": "...",
-  "headlines": [...],
-  "body_text": "...",
-  "metadata": {...}
-}
-```
-
-</td>
-<td>
-
-"I designed a unified output format that's parser-agnostic. Whether using pdfplumber now or ai_parse_document later, the output structure stays the same.
-
-This abstraction means:
-- Mapping UI doesn't care which parser was used
-- RAG chunking code is parser-independent
-- Easy to A/B test different parsers
-- Can swap parsers without breaking downstream
-
-This is the **adapter pattern**—wrap different implementations behind a common interface. Makes the system modular and testable."
-
-</td>
-<td>
-
-```python
-def parse_pdf(
-    pdf_path, 
-    parser='pdfplumber',
-    extract_tables=False
-):
-    """Main entry point - returns 
-    unified format"""
-    
-    result = {
-        'document_id': 
-            _generate_document_id(pdf_path),
-        'filename': 
-            pdf_path.split('/')[-1],
-        'headlines': [],
-        'body_text': '',
-        'tables': [],
-        'metadata': {
-            'parser_used': parser,
-            'parse_timestamp': 
-                datetime.now().isoformat(),
-            'total_pages': 0
-        }
-    }
-    
-    if parser == 'pdfplumber':
-        return _parse_with_pdfplumber(
-            pdf_path, extract_tables
-        )
-    elif parser == 'databricks':
-        return _parse_with_databricks_ai(
-            pdf_path
-        )
-    else:
-        raise ValueError(
-            f"Invalid parser: {parser}"
-        )
-```
-
-**Public API**:
-```python
-from utils import parse_pdf, extract_headlines
-
-# Full parse
-result = parse_pdf(pdf_path)
-
-# Headlines only
-headlines = extract_headlines(pdf_path)
-
-# Specific page
-page_headlines = get_headline_by_page(
-    pdf_path, page_num=5
-)
-```
-
-</td>
-</tr>
-
-</table>
+**Key Improvements**:
+* Fixed headline extraction to distinguish true headlines from body text
+* Added bold font detection and spacing analysis
+* Reduced false positives from ~40% to <5%
+* Captures headlines with hierarchy (H1/H2/H3) and associated paragraphs
 
 ---
 
 ## ✅ **COMPLETED: Layer 1 - CSV Handler (Data Ingestion)**
 
-<table>
-<tr>
-<th width="30%">🏗️ What I Built</th>
-<th width="40%">💬 Talking Points</th>
-<th width="30%">💻 Code Snippet</th>
-</tr>
+**Status**: Fully implemented with metadata-only extraction (no full data loading).
 
-<!-- CSV Handler Architecture -->
-<tr>
-<td>
-
-**Agnostic CSV Parser**
-
-**Tech Stack**:
-- `pandas` for CSV reading
-- Schema-agnostic design
-- No hardcoded column names
+**Key Decision**: CSV handler returns **column metadata only** (names, types, roles, sample values) — not pre-calculated stats like min/max/mean. This feeds into Layer 1.5 for agentic table extraction.
 
 **Output**:
-- Column metadata (name, type, role)
-- Sample values (smart sampling)
-- Row/column counts
-- Unified structure
-
-</td>
-<td>
-
-"I built a **schema-agnostic CSV handler** that works across 40+ different report types without hardcoding any column names. The key challenge: CSVs from government reports have wildly different structures—some have 10 columns, others 50+; column names vary (e.g., 'score' vs 'mtc_score_average').
-
-My solution: **infer column roles dynamically** using data characteristics:
-- **Metrics**: Numeric columns with high variance (e.g., scores, counts)
-- **Filters**: Categorical columns with low cardinality (e.g., sex, region, year)
-- **Identifiers**: Text columns with high cardinality (e.g., school_id, pupil_id)
-
-This feeds into the mapping UI where the system auto-suggests relevant columns for each headline based on semantic matching. No manual configuration required per report type."
-
-</td>
-<td>
-
-```python
-def infer_column_role(series):
-    """Classify column as metric, 
-    filter, or identifier"""
-    
-    if series.dtype in ['int64', 'float64']:
-        # Numeric: check variance
-        unique_ratio = (
-            series.nunique() / len(series)
-        )
-        
-        if unique_ratio > 0.5:
-            return 'metric'  # High variance
-        else:
-            return 'filter'  # Low variance
-    
-    elif series.dtype == 'object':
-        # Text: check cardinality
-        if series.nunique() < 50:
-            return 'filter'  # Categorical
-        else:
-            return 'identifier'  # High card
-    
-    return 'unknown'
-```
-
-</td>
-</tr>
-
-<!-- Smart Sampling Strategy -->
-<tr>
-<td>
-
-**Smart Sampling Strategy**
-
-**Time-Aware Sampling**:
-- Detects time columns (year, period)
-- Returns ALL unique values
-- Enables temporal comparisons
-
-**Size-Aware Sampling**:
-- Small categorical (< 20): ALL values
-- Large categorical (≥ 20): Top 10
-- Prevents UI explosion
-
-</td>
-<td>
-
-"The sampling strategy solves a critical problem: headlines often compare across years—'Mean score increased from 19.8 in 2021/22 to 20.7 in 2024/25'. If we only sample the top 5 time periods, we might miss the years needed for the comparison.
-
-My solution: **time-aware sampling**:
-1. Detect time columns by name (contains 'year', 'period', 'date')
-2. For time columns: return ALL unique values (4 years, not just top 5)
-3. For other categorical: apply size-based rules
-
-This ensures the agent can always construct accurate temporal queries. For a column like `time_period` with values [202122, 202223, 202324, 202425], the system returns all 4, enabling year-over-year comparisons.
-
-For large categorical columns (e.g., region with 150+ values), we sample top 10 to avoid overwhelming the UI—users can still see the most common values and refine if needed."
-
-</td>
-<td>
-
-```python
-def get_sample_values(series, n=5):
-    """Extract representative samples
-    with smart strategies"""
-    
-    if series.dtype == 'object':
-        col_name = series.name.lower()
-        
-        # Time columns: ALL values
-        is_time = any(
-            kw in col_name 
-            for kw in ['year', 'period', 
-                       'date', 'time']
-        )
-        
-        if is_time:
-            return sorted(
-                series.unique().tolist()
-            )
-        
-        # Other categorical: size-aware
-        unique_count = series.nunique()
-        
-        if unique_count <= 20:
-            # Small: return ALL
-            return series.value_counts()\
-                        .index.tolist()
-        else:
-            # Large: top 10 most common
-            return series.value_counts()\
-                        .head(10)\
-                        .index.tolist()
-    
-    elif series.dtype in ['int64', 'float64']:
-        # Numeric columns
-        col_name = series.name.lower()
-        is_time = any(
-            kw in col_name 
-            for kw in ['year', 'period']
-        )
-        
-        if is_time:
-            # Time as numbers (202122)
-            return sorted(
-                series.unique().tolist()
-            )
-        
-        # Regular metrics: stats
-        return {
-            'min': float(series.min()),
-            'max': float(series.max()),
-            'mean': float(series.mean()),
-            'median': float(series.median())
-        }
-```
-
-</td>
-</tr>
-
-<!-- Unified Output Format -->
-<tr>
-<td>
-
-**Unified Output Format**
-
-**Matches PDF Parser Structure**:
 ```json
 {
-  "filename": "...",
+  "filename": "data.csv",
   "row_count": 4494,
   "column_count": 33,
-  "columns": [...],
-  "metadata": {...}
+  "columns": [
+    {
+      "name": "sex",
+      "type": "object",
+      "role": "filter",
+      "sample_values": ["Boys", "Girls", "Total"]
+    },
+    {
+      "name": "time_period",
+      "type": "object",
+      "role": "filter",
+      "sample_values": ["202223", "202324", "202425"]
+    },
+    {
+      "name": "score_average",
+      "type": "float64",
+      "role": "metric",
+      "sample_values": {}
+    }
+  ]
 }
 ```
 
+---
+
+## 🔄 **IN PROGRESS: Layer 1.5 - Agentic Table Extraction**
+
+<table>
+<tr>
+<th width="30%">🏗️ What I'm Building</th>
+<th width="40%">💬 Talking Points</th>
+<th width="30%">💻 Code Snippet (Planned)</th>
+</tr>
+
+<!-- Core Architecture -->
+<tr>
+<td>
+
+**LLM-Powered Table Extractor**
+
+**Model**: Phi-3-Mini-4K-Instruct
+- 3.8B params
+- CPU-friendly
+- Code generation optimized
+
+**Input**:
+- Headline text
+- Paragraphs
+- CSV path
+- Column metadata
+
+**Output**:
+- Small extracted table (JSON)
+- 10-50 rows
+- Only relevant columns
+
 </td>
 <td>
 
-"I designed the CSV handler output to mirror the PDF parser structure—both return a unified format with metadata, timestamps, and parser info. This consistency means:
-- Mapping UI doesn't care if it's reading PDF or CSV metadata
-- Both feed into the same semantic matching algorithm
-- Easy to extend (add new parsers without breaking UI)
+"This layer solves the core UX problem: **agents need focused table slices, not full CSVs**. Government statistical tables work this way—they show filtered subsets (e.g., 'Boys vs Girls' for gender analysis), not thousands of rows.
 
-The `get_csv_metadata()` function is the public API—it's the CSV equivalent of `parse_pdf()`. Both are single-call entry points that return complete, structured metadata ready for downstream consumption."
+I chose **Phi-3-Mini-4K-Instruct** because:
+1. **Free & CPU-friendly**: Runs locally without GPU
+2. **Code generation**: Trained specifically for generating code (pandas in our case)
+3. **4K context**: Enough for headline + paragraphs + column metadata
+4. **Small but capable**: 3.8B params balances quality and inference speed
+
+The LLM analyzes the headline and generates pandas filtering code. Before execution, I validate the code to ensure it only contains safe pandas operations (no imports, no file operations, no system calls). This sandboxed approach prevents malicious code execution while allowing flexible data extraction."
 
 </td>
 <td>
 
 ```python
-def get_csv_metadata(csv_path):
-    """Main entry point - unified output"""
+from transformers import AutoModelForCausalLM, AutoTokenizer
+
+# Load Phi-3-Mini
+model_name = "microsoft/Phi-3-mini-4k-instruct"
+tokenizer = AutoTokenizer.from_pretrained(model_name)
+model = AutoModelForCausalLM.from_pretrained(
+    model_name,
+    device_map="cpu",
+    torch_dtype="auto",
+    trust_remote_code=True
+)
+
+def extract_table(
+    headline: str,
+    paragraphs: List[str],
+    csv_path: str,
+    column_metadata: List[Dict]
+) -> Dict:
+    """
+    Extract small table using LLM-generated pandas code.
     
+    Safety: Generated code is validated before execution
+    to ensure it only contains safe pandas operations.
+    """
+    # Build prompt
+    prompt = build_extraction_prompt(
+        headline, paragraphs, column_metadata
+    )
+    
+    # Generate pandas code
+    inputs = tokenizer(prompt, return_tensors="pt")
+    outputs = model.generate(**inputs, max_new_tokens=200)
+    pandas_code = tokenizer.decode(
+        outputs[0], skip_special_tokens=True
+    )
+    
+    # Validate code safety (whitelist pandas operations)
+    if not is_safe_pandas_code(pandas_code):
+        raise ValueError("Generated code contains unsafe operations")
+    
+    # Execute in sandboxed environment
     df = pd.read_csv(csv_path)
+    extracted_df = execute_pandas_safely(df, pandas_code)
     
-    metadata = {
-        'filename': os.path.basename(csv_path),
-        'row_count': len(df),
-        'column_count': len(df.columns),
-        'columns': [],
-        'metadata': {
-            'parser_used': 'pandas',
-            'parse_timestamp': 
-                datetime.now().isoformat()
-        }
+    # Convert to JSON
+    return {
+        'headline_id': headline_id,
+        'extracted_table': extracted_df.to_dict('records'),
+        'filters_applied': extract_filters(pandas_code),
+        'columns_selected': list(extracted_df.columns)
     }
-    
-    # Loop through columns
-    for col_name in df.columns:
-        col_series = df[col_name]
-        
-        # Infer role and sample
-        role = infer_column_role(col_series)
-        samples = get_sample_values(col_series)
-        
-        # Build column metadata
-        column_meta = {
-            'name': col_name,
-            'type': str(col_series.dtype),
-            'role': role,
-            'sample_values': samples
-        }
-        
-        metadata['columns'].append(column_meta)
-    
-    return metadata
 ```
 
-**Public API**:
+</td>
+</tr>
+
+<!-- Why This Approach -->
+<tr>
+<td>
+
+**Why Agentic Extraction?**
+
+**Problem**:
+- Full CSVs: 4,000+ rows
+- Agents can't reason over large data
+- Pre-calc stats useless for verification
+
+**Solution**:
+- Extract small, focused tables
+- Like government stats reports
+- Show only relevant data
+
+</td>
+<td>
+
+"The initial approach—passing CSV metadata (min/max/mean) to agents—failed because:
+1. **Too generic**: 'Mean score: 19.8' doesn't help verify 'Boys scored 19.5, girls 20.1'
+2. **Wrong granularity**: Agents need group-by data (by gender, by year), not overall stats
+3. **No filtering**: Can't isolate the exact rows the headline refers to
+
+Government stats solve this by showing **small extracted tables** filtered to the relevant subset. For 'Attainment by gender', they don't show 4,494 rows—they show 12 rows (3 genders × 4 years).
+
+This Layer 1.5 replicates that approach **generically**:
+- No hardcoded column names
+- No hardcoded filters
+- LLM infers what to extract from headline context
+- Works across all publications"
+
+</td>
+<td>
+
+**Example Input**:
+```
+Headline: "Attainment by gender"
+Paragraph: "Girls scored 20.1, boys 19.5..."
+CSV: 4,494 rows, 33 columns
+Columns: [sex, time_period, score_average, ...]
+```
+
+**LLM-Generated Code**:
 ```python
-from utils import get_csv_metadata
+df[df['sex'].isin(['Boys', 'Girls', 'Total'])]
+  .groupby(['sex', 'time_period'])
+  .agg({'score_average': 'mean'})
+```
 
-# Parse CSV
-result = get_csv_metadata(csv_path)
-
-print(result['filename'])
-print(result['column_count'])
-
-# Find all metric columns
-metrics = [
-    col for col in result['columns'] 
-    if col['role'] == 'metric'
+**Output Table** (12 rows):
+```json
+[
+  {"sex": "Boys", "time_period": "202223", 
+   "score_average": 19.5},
+  {"sex": "Girls", "time_period": "202223", 
+   "score_average": 20.1},
+  {"sex": "Total", "time_period": "202223", 
+   "score_average": 19.8},
+  ...
 ]
+```
+
+</td>
+</tr>
+
+<!-- UI Integration -->
+<tr>
+<td>
+
+**Mapping UI Changes**
+
+**Old Flow**:
+1. Select headline
+2. View column stats
+3. Map headline to columns
+
+**New Flow**:
+1. Select headline
+2. **Trigger table extraction**
+3. **Preview extracted table**
+4. Confirm & proceed
+
+</td>
+<td>
+
+"The mapping UI now displays **extracted table previews** instead of column statistics. This gives the user confidence that the system extracted the right data before running the full quality check.
+
+The preview shows:
+- Which filters were applied (e.g., `sex IN ['Boys', 'Girls']`)
+- Which columns were selected (e.g., `sex`, `time_period`, `score_average`)
+- First 10 rows of the extracted table
+
+If the table looks wrong, the user can:
+- Refine the headline selection
+- Try a different CSV
+- Manually adjust the extraction (future feature)
+
+This **human-in-the-loop validation** prevents the system from running expensive agent analysis on the wrong data subset."
+
+</td>
+<td>
+
+**UI Mock (Streamlit)**:
+```python
+import streamlit as st
+
+st.subheader("Extracted Table Preview")
+
+# Show filters applied
+st.info(f"Filters: sex IN ['Boys', 'Girls', 'Total']")
+st.info(f"Columns: sex, time_period, score_average")
+
+# Show table preview
+extracted_table_df = pd.DataFrame(extracted_table)
+st.dataframe(
+    extracted_table_df.head(10),
+    use_container_width=True
+)
+
+# Confirm button
+if st.button("✅ Looks Good - Proceed to Quality Check"):
+    st.session_state['confirmed_tables'][headline_id] = extracted_table
+    st.success("Table confirmed!")
 ```
 
 </td>
@@ -821,322 +522,55 @@ metrics = [
 
 ## ✅ **COMPLETED: Layer 2 - RAG Configuration**
 
-<table>
-<tr>
-<th width="30%">🏗️ What I Built</th>
-<th width="40%">💬 Talking Points</th>
-<th width="30%">💻 Code Snippet</th>
-</tr>
+**Status**: Configuration defined, ready for implementation.
 
-<!-- Semantic Chunking -->
-<tr>
-<td>
-
-**Semantic Chunking Strategy**
-
-📊 **Methods**:
-- Semantic (sentence similarity)
-- Headline-based (structure-preserving)
-- Fixed-size (fallback)
-
-</td>
-<td>
-
-"Fixed-size chunking breaks semantic units mid-sentence, hurting retrieval quality. Semantic chunking uses sentence embeddings to detect topic shifts and only splits when similarity drops below a threshold.
-
-For statistical reports with clear structure, I also support headline-based chunking to preserve the document hierarchy—this aligns perfectly with the user workflow where they select specific headlines to analyze. The chunking strategy is configurable, not hardcoded."
-
-</td>
-<td>
-
-```python
-RAG_CONFIG = {
-    'chunking': {
-        'strategy': 'semantic',
-        
-        'semantic': {
-            'method': 'sentence_similarity',
-            'min_chunk_size': 100,
-            'max_chunk_size': 1000,
-            'similarity_threshold': 0.7
-        },
-        
-        'headline_based': {
-            'method': 'extract_sections',
-            'include_context': True,
-            'context_window': 2
-        }
-    }
-}
-```
-
-</td>
-</tr>
-
-<!-- Vector Store -->
-<tr>
-<td>
-
-**Vector Store Options**
-
-🔷 Databricks Vector Search
-- Delta-synced index
-- Auto-scaling
-
-🔶 FAISS
-- Local index
-- Fast, no dependencies
-
-</td>
-<td>
-
-"I configured both Databricks Vector Search and FAISS. Databricks Vector Search is a managed service that auto-syncs with Delta tables and scales automatically—ideal for production.
-
-FAISS is a local alternative for development. The vector store is abstracted behind a common interface, so swapping implementations doesn't require changing retrieval code. This demonstrates the adapter pattern and separation of concerns."
-
-</td>
-<td>
-
-```python
-'vector_store': {
-    'databricks': {
-        'provider': 'databricks_vector_search',
-        'index_name': 'doc_chunks_index',
-        'index_type': 'DELTA_SYNC',
-        'similarity_metric': 'cosine'
-    },
-    
-    'faiss': {
-        'provider': 'faiss',
-        'index_type': 'IndexFlatL2',
-        'index_path': f"{PATHS['processed']}"
-    },
-    
-    'active': 'databricks'
-}
-```
-
-</td>
-</tr>
-
-</table>
+**Key Decisions**:
+* Semantic chunking preferred over fixed-size for statistical reports
+* Dual-path embeddings: HuggingFace (free) or Databricks Foundation Models
+* Vector store: FAISS (local) or Databricks Vector Search (managed)
 
 ---
 
-## ✅ **COMPLETED: Layer 3 - Mapping Configuration**
+## 🔜 **NOT STARTED: Layer 3 - Headline-to-CSV Mapping UI**
 
-<table>
-<tr>
-<th width="30%">🏗️ What I Built</th>
-<th width="40%">💬 Talking Points</th>
-<th width="30%">💻 Code Snippet</th>
-</tr>
+**Status**: Pending completion of Layer 1.5.
 
-<!-- Mapping Layer -->
-<tr>
-<td>
-
-**Headline-to-CSV Mapping**
-
-🔗 **Stores**:
-- Headline text
-- CSV columns
-- Expected calculation
-- Agent types to run
-
-</td>
-<td>
-
-"The mapping layer is critical—it's where users connect headlines to CSV data. When a user selects 'Mean average score was 19.8', they map it to CSV columns ['score'] and specify the calculation type ('mean').
-
-This metadata is stored as JSON (or optionally a Delta table), then passed to the Numerical Agent along with retrieved document context. The agent knows exactly which CSV columns to query, rather than guessing. This design eliminates ambiguity and makes the system deterministic."
-
-</td>
-<td>
-
-```python
-MAPPING_CONFIG = {
-    'storage': {
-        'format': 'json',
-        'path': f"{PATHS['mappings']}"
-                "headline_csv_mappings.json",
-        'delta_table': 
-            f"{catalog}.{schema}.mappings"
-    },
-    
-    'schema': {
-        'headline_id': 'str',
-        'headline_text': 'str',
-        'csv_columns': 'list[str]',
-        'csv_filters': 'dict',
-        'expected_calculation': 'str',
-        'agent_types': 'list[str]'
-    }
-}
-```
-
-</td>
-</tr>
-
-<!-- Auto-suggestion -->
-<tr>
-<td>
-
-**AI-Powered Auto-Suggestion**
-
-Uses semantic similarity to suggest CSV columns for each headline
-
-</td>
-<td>
-
-"I added an auto-suggestion feature that uses semantic similarity to match headline text with CSV column names and descriptions. When confidence exceeds 0.8, it suggests the top 3 most relevant columns.
-
-This reduces manual mapping work while keeping the user in control—they review and approve suggestions rather than blindly accepting them. It's a human-in-the-loop approach that balances automation with accuracy."
-
-</td>
-<td>
-
-```python
-'auto_suggest': {
-    'enabled': True,
-    'method': 'semantic_similarity',
-    'confidence_threshold': 0.8,
-    'max_suggestions': 3
-}
-
-# Usage flow:
-# 1. User selects headline
-# 2. System embeds headline text
-# 3. Compute similarity with all CSV cols
-# 4. Show top 3 if similarity > 0.8
-# 5. User reviews and confirms
-```
-
-</td>
-</tr>
-
-</table>
+**Blockers**: Needs Layer 1.5 (agentic table extraction) to display extracted table previews in the UI.
 
 ---
 
-## 📈 **Architecture Decisions Log**
+## 🔜 **NOT STARTED: Layer 4 - Multi-Agent Orchestration**
 
-| Decision | Rationale | Trade-offs | Status |
-|----------|-----------|------------|--------|
-| **Unity Catalog over workspace FS** | Governance, lineage tracking, production-ready | Slightly more setup complexity | ✅ Implemented |
-| **Dual config (Databricks + Free)** | Flexibility to develop locally, deploy enterprise | Maintain two configs | ✅ Implemented |
-| **Semantic chunking** | Better retrieval quality | More compute than fixed-size | ✅ Configured |
-| **Mapping layer (explicit, not inferred)** | Eliminates ambiguity, user control | Requires user input | ✅ Configured |
-| **JSON + Delta table storage** | JSON for quick prototyping, Delta for scale | Dual maintenance initially | ✅ Configured |
-| **pdfplumber as primary parser** | Free, works anywhere, good for dev/demos | Lower accuracy than AI-powered (~85% vs 95%) | ✅ Implemented |
-| **ai_parse_document as optional premium** | Higher accuracy, multi-format support | Paid (DBU charges), Databricks-only | 📋 Documented (not implemented) |
-| **Character-level font extraction** | Handles PDFs where extract_words() fails | More complex than word-level extraction | ✅ Implemented |
-| **Font-based headline detection** | Reliable for statistical reports (consistent formatting) | May struggle with creative/inconsistent layouts | ✅ Implemented |
-| **Multi-layer validation (word count + patterns + formatting)** | Reduces false positives from 40% to <5% | More rules to maintain | ✅ Implemented |
-| **Unified parser output format** | Swap parsers without breaking downstream code | Extra abstraction layer | ✅ Implemented |
-| **Headline hierarchy by font size** | Mimics Word/HTML heading levels, intuitive | Assumes larger font = higher importance | ✅ Implemented |
-| **Paragraph extraction per headline** | Provides context for RAG retrieval | Requires accurate headline detection first | ✅ Implemented |
-| **Schema-agnostic CSV handler** | Works across 40+ report types without hardcoding | Can't leverage domain-specific optimizations | ✅ Implemented |
-| **Role-based column classification (metric/filter/identifier)** | Enables semantic matching without manual tagging | Heuristics may misclassify edge cases | ✅ Implemented |
-| **Time-aware sampling strategy** | Returns ALL time periods for temporal comparisons | Slightly larger metadata for time columns | ✅ Implemented |
-| **Size-aware sampling (< 20 = all, ≥ 20 = top 10)** | Prevents UI explosion on large categorical columns | Users might need to refine if target value not in top 10 | ✅ Implemented |
-| **Variance-based metric detection (unique_ratio > 0.5)** | Distinguishes scores from year columns (both numeric) | May fail on low-variance metrics (binary outcomes) | ✅ Implemented |
-| **Unified CSV/PDF output format** | Consistent interface for mapping UI | Extra abstraction layer | ✅ Implemented |
+**Status**: Pending Layer 1.5 and Layer 3.
 
-### **PDF Parsing Decision Deep-Dive**
-
-**FREE (pdfplumber) vs PAID (ai_parse_document)**:
-
-| Dimension | pdfplumber | ai_parse_document |
-|-----------|------------|-------------------|
-| **Cost** | ✅ Free | ❌ Paid (DBU charges) |
-| **Availability** | ✅ Works anywhere | ❌ Databricks workspace only |
-| **Setup** | ✅ `pip install pdfplumber` | ❌ Requires region support |
-| **Accuracy** | ⚠️ 80-90% (font heuristics) | ✅ 95%+ (AI semantic understanding) |
-| **Headline Detection** | ⚠️ Font-based rules | ✅ AI understands context |
-| **Table Extraction** | ✅ Good (native API) | ✅ Excellent (returns HTML) |
-| **Confidence Scores** | ❌ Manual calculation | ✅ Built-in per element |
-| **Multi-format** | ❌ PDF only | ✅ PDF, DOCX, PPTX, images |
-| **Offline Use** | ✅ Yes | ❌ No |
-| **Best For** | Development, demos, cost-sensitive | Production, high-accuracy needs |
-
-**Decision**: Started with **pdfplumber** (good enough for MVP, zero cost), keep **ai_parse_document** as premium upgrade path for production.
+**Key Agents**:
+* Numerical Accuracy Agent (uses extracted tables, not full CSVs)
+* Style & Quality Agent
+* Self-Healing Agent
 
 ---
 
-## 🎯 **Interview Questions I Can Answer**
+## 🔜 **NOT STARTED: Layer 5 - Self-Healing & Feedback Loop**
 
-### **System Design**
-- ✅ "Walk me through your RAG architecture"
-- ✅ "How do you handle configuration for multiple environments?"
-- ✅ "Why did you choose Unity Catalog over S3 directly?"
-- ✅ "How does your mapping layer work?"
-- ✅ "Why two PDF parsers? How do you choose between them?"
-- ✅ "Explain your headline extraction algorithm"
-
-### **Technical Deep Dive**
-- ✅ "Explain semantic vs fixed-size chunking"
-- ✅ "How would you switch from free to paid models?"
-- ✅ "How does font-based headline detection work?"
-- ✅ "What are the limitations of pdfplumber vs ai_parse_document?"
-- ✅ "How do you ensure consistent output from different parsers?"
-- ✅ "Why character-level extraction instead of word-level?"
-- ✅ "Walk through your headline validation logic"
-- ✅ "How do you assign headline hierarchy?"
-- ✅ "How does your CSV handler work without hardcoded column names?"
-- ✅ "Explain your column role classification (metric/filter/identifier)"
-- ✅ "Why time-aware sampling? What problem does it solve?"
-- ✅ "How do you handle large categorical columns (150+ unique values)?"
-- ✅ "Walk through the variance-based metric detection logic"
-
-### **Production Readiness**
-- ✅ "How would you monitor this system in production?"
-- ✅ "What's your error handling strategy?"
-- ✅ "How do you handle PDFs with inconsistent formatting?"
-- ✅ "What's the cost-accuracy trade-off in PDF parsing?"
-- ✅ "How would you handle scanned PDFs (OCR)?"
-- ✅ "What happens when font metadata is completely missing?"
-
-### **Testing & Validation**
-- ✅ "How did you test the headline extraction?"
-- ✅ "What metrics do you use to evaluate parsing accuracy?"
-- ✅ "How do you handle edge cases (all-caps headers, no font data, etc.)?"
+**Status**: Final layer, pending all upstream layers.
 
 ---
 
-## 📝 **Next Session Checklist**
+## 📈 **Progress Summary**
 
-**Layer 1 - Document Ingestion**: ✅ COMPLETE
-- [x] Build PDF parser module (`src/utils/pdf_parser.py`)
-- [x] Implement pdfplumber parser with character-level font extraction
-- [x] Add headline validation (word count, patterns, formatting)
-- [x] Implement hierarchy assignment (H1/H2/H3 by font size)
-- [x] Add paragraph extraction per headline
-- [x] Create unified output format
-- [x] Test with Multiplication_check.pdf (24 pages, statistical report)
-- [x] Document ai_parse_document as future enhancement
+| Layer | Status | Completion |
+|-------|--------|------------|
+| Layer 0: Storage | ✅ Complete | 100% |
+| Layer 1: PDF Parser | ✅ Complete | 100% |
+| Layer 1: CSV Handler | ✅ Complete | 100% |
+| **Layer 1.5: Agentic Table Extraction** | 🔄 **In Progress** | **20%** |
+| Layer 2: RAG Configuration | ✅ Complete | 100% |
+| Layer 3: Mapping UI | 🔜 Not Started | 0% |
+| Layer 4: Multi-Agent | 🔜 Not Started | 0% |
+| Layer 5: Self-Healing | 🔜 Not Started | 0% |
 
-**Layer 1 - CSV Handler**: ✅ COMPLETE
-- [x] Build CSV handler module (`src/utils/csv_handler.py`)
-  - [x] Parse CSV with column detection
-  - [x] Infer column roles (metric, filter, identifier)
-  - [x] Smart sampling strategy (time-aware, size-aware)
-  - [x] Generate column summaries (stats for numeric, samples for categorical)
-  - [x] Export metadata for mapping UI
-  - [x] Unified output format matching PDF parser structure
-
-**Layer 3 - Mapping UI**:
-- [ ] Create Streamlit Tab 3: Headline-to-CSV Mapping
-  - [ ] Display parsed headlines (with hierarchy)
-  - [ ] Show CSV columns with previews
-  - [ ] Drag-and-drop mapping interface
-  - [ ] Save mappings to JSON/Delta
-
-**Layer 4 - Multi-Agent System**:
-- [ ] Build Numerical Agent (verify calculations)
-- [ ] Build Style Agent (check formatting)
-- [ ] Add agent orchestration logic
-
----
-
-**Last Updated**: 2026-07-06 | **Version**: 0.4.0 | **Status**: Layer 1 FULLY Complete ✅ (PDF Parser + CSV Handler), Moving to Layer 3 (Mapping UI) 🔄
+**Next Steps**:
+1. ✅ Complete Layer 1.5 documentation (done)
+2. 🔄 Implement `table_extractor.py` with Phi-3-Mini
+3. 🔄 Test extraction on sample headline + CSV
+4. 🔄 Integrate into mapping UI (Layer 3)

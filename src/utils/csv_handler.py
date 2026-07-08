@@ -1,15 +1,15 @@
 """
-CSV handler - Agnostic CVS Parsign and Metadata Extraction 
+CSV handler - Agnostic CSV Parsing and Metadata Extraction 
 
-Purprose:
+Purpose:
     Parse ANY CSV file (no hardcoded column names) and extract:
-    - Column names, types, and roles (metric, vs filter vs identifier)
+    - Column names, types, and roles (metric vs filter vs identifier)
     - Sample values for semantic matching
     - Metadata for mapping UI and agent queries
 
 Architecture Alignment:
-    - Layer 1: Document& Data Ingestion (CSV side)
-    - Feeds into: Layer 3 (mapping UI) and Layer 4 (agent verificaion)
+    - Layer 1: Document & Data Ingestion (CSV side)
+    - Feeds into: Layer 1.5 (table_extractor) and Layer 3 (mapping UI)
 
 Key Design Principle:
     - No hardcoding - works for any CSV structure across 40+ different reports
@@ -18,33 +18,35 @@ Key Design Principle:
 
 import pandas as pd
 import os
-from typing import Dict, List, Any
+from typing import Dict, List, Any, Optional
 from datetime import datetime
+
 
 
 ############################################
 #### Build the Column Role Classifier #####
-###########################################
+############################################
 
 def infer_column_role(series: pd.Series) -> str:
     """
     Classify a column's role in the dataset.
 
     Returns one of:
-        - 'metric': Numeric values verified (scores, counts, percentages)
-        - 'filter': Categorical dimensions for groupign (sex, region, year)
+        - 'metric': Numeric values to be verified (scores, counts, percentages)
+        - 'filter': Categorical dimensions for grouping (sex, region, year)
         - 'identifier': Unique IDs or codes (school_id, pupil_id)
 
     How it works:
-        1. Check data types(number vs. text)
-        2. Check uniqueness ration (how many different values?)
+        1. Check data type (number vs. text)
+        2. Check uniqueness ratio (how many different values?)
         3. Apply rules to classify
 
     Args:
-        series(pd.Series): A single column from the CSV 
+        series (pd.Series): A single column from the CSV 
 
     Returns:
         str: 'metric', 'filter', or 'identifier'
+    
     Example:
         >>> df = pd.read_csv('data.csv')
         >>> role = infer_column_role(df['mtc_score_average'])
@@ -54,7 +56,7 @@ def infer_column_role(series: pd.Series) -> str:
     # Rule 1: Check if it's a number column
     if series.dtype in ['int64', 'float64']:
 
-        # Calculate uniqueness ration
+        # Calculate uniqueness ratio
         # if column has 1000 rows and 800 different values ratio = 0.8 
         unique_ratio = series.nunique() / len(series)
         # High variance (many different values) -> probably a metric
@@ -70,7 +72,7 @@ def infer_column_role(series: pd.Series) -> str:
         
     # Rule 2: Text columns
     elif series.dtype == 'object':
-        # If < 50 unique valyes -> categorical filter
+        # If < 50 unique values -> categorical filter
         # Example: sex column: ['Male', 'Female', 'Total'] (3 unique)
         if series.nunique() < 50:
             return 'filter'
@@ -86,18 +88,18 @@ def infer_column_role(series: pd.Series) -> str:
 #### Get Sample Values Function #####
 #####################################
 
-def get_sample_values(series: pd.Series, n: int = 5) -> Any:
+def get_sample_values(series: pd.Series, n: int = 5) -> Optional[List]:
     """
     Extract representative sample values from a column.
     
     Purpose:
         - For FILTERS: Show the actual values (for dropdowns in UI)
-        - For METRICS: Show min/max/mean (to understand the range)
+        - For METRICS: Return None (table_extractor will handle data)
     
     How it works:
         - Text columns → Most common values (top 5 by default)
         - Time/date columns → ALL unique values (for temporal comparisons)
-        - Numeric columns → Statistical summary (min, max, mean, median)
+        - Numeric columns → Return None (no pre-calculated stats)
     
     Smart Sampling:
         - Time-related columns (year, period, date): Return ALL values
@@ -113,7 +115,7 @@ def get_sample_values(series: pd.Series, n: int = 5) -> Any:
     
     Returns:
         For text: List of strings (e.g., ['Male', 'Female', 'Total'])
-        For numbers: Dict with stats (e.g., {'min': 0, 'max': 25, 'mean': 19.8})
+        For numbers: None (table_extractor will handle actual data extraction)
     
     Example:
         >>> df = pd.read_csv('data.csv')
@@ -128,121 +130,126 @@ def get_sample_values(series: pd.Series, n: int = 5) -> Any:
         
         # Metric column (numeric stats)
         >>> samples = get_sample_values(df['mtc_score_average'])
-        >>> print(samples)  # {'min': 0.0, 'max': 25.0, 'mean': 19.8, 'median': 20.0}
+        >>> print(samples)  # None
     
     """
 
-    if series.dtype =='object':
+    if series.dtype == 'object':
 
-        #Check if this s a time-related column 
+        # Check if this is a time-related column 
         # Look for keywords in column name: year, period, date, time, quarter, month
         column_name = series.name.lower()
         is_time_column = any(keyword in column_name for keyword in ['year', 'period', 'date', 'time', 'quarter', 'month'])
 
         # For time columns: Return ALL unique values
-        # Why ? Headlines compare across time
+        # Why? Headlines compare across time
         # We need all years available for matching 
 
         if is_time_column:
             return sorted(series.unique().tolist())
-        #For other categorical columns: Apply smart sampling 
+        # For other categorical columns: Apply smart sampling 
         unique_count = series.nunique()
 
         if unique_count <= 20:
             # Small categorical: Return ALL values 
-            # Example:sex (3), ethicity_major (8), school_type(12)
+            # Example: sex (3), ethnicity_major (8), school_type (12)
             return series.value_counts().index.tolist()
         else:
-            # Large categegorical: Return top 10 most common 
-            # Example: region(150+), school_id(1000+)
+            # Large categorical: Return top 10 most common 
+            # Example: region (150+), school_id (1000+)
             return series.value_counts().head(10).index.tolist()
+        
     # Case 2: numeric columns
     elif series.dtype in ['int64', 'float64']:
-        # Check inf numeric column is actually a year/period (lif 202223)
+        # Check if numeric column is actually a year/period (like 202223)
         column_name = series.name.lower()
         is_time_column = any(keyword in column_name for keyword in ['year', 'period', 'date', 'time', 'quarter', 'month'])
 
         if is_time_column:
             return sorted(series.unique().tolist())
         else:
-            return {
-                'min': float(series.min()),
-                'max': float(series.max()),
-                'mean': float(series.mean()),
-                'median': float(series.median())
-            }
+            # For metric columns: Return None
+            # table_extractor.py will handle actual data extraction
+            return None  # Explicit return for non-time numeric columns
     else:
         return None
     
 
-    #############################################
-    #### Building the Main Metadata Extractor####
-    #############################################
+################################################
+#### Building the Main Metadata Extractor ######
+################################################
+
 def get_csv_metadata(csv_path: str) -> Dict:
     """
     Main entry point - Extract complete metadata from any CSV file. 
 
-    This is the CSV equivalent of parse_pd() - it return a unified structure that works for ANY CSV across 40+ dofferent reports. 
+    This is the CSV equivalent of parse_pdf() - it returns a unified structure 
+    that works for ANY CSV across 40+ different reports. 
 
     What it does:
     1. Read the CSV using pandas
-    2. Loop through eahc column
+    2. Loop through each column
     3. Classify role (metric/filter/identifier)
     4. Extract sample values
     5. Return unified metadata structure 
 
     Architecture:
-        - No hardcoded columns names
+        - No hardcoded column names
         - Works for any CSV structure
-        - Output feeds into Layer 3 (mapping UI) and Layer 4 (agents)
+        - Output feeds into Layer 1.5 (table_extractor) and Layer 3 (mapping UI)
 
     Args:
-        - csv_path (str): Full path to CSV file
+        csv_path (str): Full path to CSV file
 
     Returns:
-        - Dict: Unified metadata structured:
+        Dict: Unified metadata structure:
         {
             "filename": str, 
-            "row_count': int, 
+            "row_count": int, 
             "column_count": int, 
             "columns": [
                 {
                     "name": str, 
                     "type": str, 
-                    "role": str, # 'metric', 'filter', or 'identifier'
+                    "role": str,  # 'metric', 'filter', or 'identifier'
                     "sample_values": Any 
-                    }, 
-                    ...
-                ], 
-                "metadata": {
-                    "parser_used": str, 
-                    "parse_timestamp": str
-                }
+                }, 
+                ...
+            ], 
+            "metadata": {
+                "parser_used": str, 
+                "parse_timestamp": str
             }
+        }
+    
     Example: 
-        >>> medatada = get_csv_metadata('/path/to/data.csv')
+        >>> metadata = get_csv_metadata('/path/to/data.csv')
         >>> print(metadata['filename']) 
         >>> print(metadata['column_count']) 
         >>>
-        >>> # Fing all metric columns
+        >>> # Find all metric columns
         >>> metrics = [col for col in metadata['columns'] if col['role'] == 'metric']
-        >>> print(metrics) # Extract representative sample values from a column.
+        >>> print(metrics)
 
     Raises: 
-        FileNotFoundError: If CSV file doesn;t exist 
-        Exception: If CSV cannot be parsed
+        FileNotFoundError: If CSV file doesn't exist 
+        RuntimeError: If CSV cannot be parsed
     """
     try:
-        # Step 1 : Read CSV file
+        # Step 1: Read CSV file
         # We use pandas because it's industry standard and handles edge cases
 
         df = pd.read_csv(csv_path)
+
+        # NEW LINE: Compute columns list once (performance fix)
+        column_list = list(df.columns) 
+
 
         # Step 2: Initialize the metadata structure
         metadata = {
             'filename': os.path.basename(csv_path),
             'row_count': len(df),
-            'column_count': len(df.columns),
+            'column_count': len(column_list),  # Use pre-computed list
             'columns': [],
             'metadata': {
                 'parser_used': 'pandas',
@@ -250,21 +257,21 @@ def get_csv_metadata(csv_path: str) -> Dict:
             }
         }
 
-        # Step 3: Loop through each column extract metadata
-        for column_name in df.columns:
-            # Get the column as a pandas Serier
+        # Step 3: Loop through each column and extract metadata
+        for column_name in column_list:
+            # Get the column as a pandas Series
             column_series = df[column_name]
 
-            # Use our helper functiosn to classify and sample
+            # Use our helper functions to classify and sample
             role = infer_column_role(column_series)
             samples = get_sample_values(column_series)
 
-            # Build columns metadata
+            # Build column metadata
             column_metadata = {
                 'name': column_name, 
-                'type': str(column_series.dtype), # 'int64', 'float64', 'object'
-                'role': role, # 'metric', 'filter', or 'identifier
-                'sample_values': samples # List or dict depending on type
+                'type': str(column_series.dtype),  # 'int64', 'float64', 'object'
+                'role': role,  # 'metric', 'filter', or 'identifier'
+                'sample_values': samples  # List or None depending on type
 
             }
 
@@ -275,10 +282,5 @@ def get_csv_metadata(csv_path: str) -> Dict:
         return metadata
     except FileNotFoundError:
         raise FileNotFoundError(f"CSV file not found: {csv_path}")
-    except Exception as e :
+    except Exception as e:
         raise RuntimeError(f"Error parsing CSV: {e}")
-
-
-
-
-
