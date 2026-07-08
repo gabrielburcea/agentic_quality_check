@@ -45,3 +45,10 @@ python-dotenv==1.0.0
 # - sys
 # - os
 # - re
+
+
+######################################
+# LLM inference 
+# transformers==4.36.0 # Huggin Face transformers for Phi-3-Mini
+# torch== 2.2.0 # Pytorch backend for model inference
+# accelerate>=0.25.0 # Efficient model loading and device management
