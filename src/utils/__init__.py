@@ -1,7 +1,8 @@
 """
 This package contains:
 - pdf_parser: PDF parsing with headline extraction
-- csv_handler: CSV parsing and metadata extraction (agnostic)  # ← NEW!
+- csv_handler: CSV parsing and metadata extraction (agnostic) 
+- table_extractor: LLM-powered pivot table generation
 """
 from .pdf_parser import (
     parse_pdf,
@@ -19,7 +20,11 @@ from .csv_handler import (
     get_sample_values      # Helper (user might want direct access)
 )
 
+from .table_extractor import(
+    TableExtractor
+)
 __all__ = [
+    
     # PDF handler functions
     'parse_pdf',
     'extract_headlines',
@@ -27,8 +32,12 @@ __all__ = [
     'FONT_SIZE_THRESHOLDS',
     'HEADLINE_CRITERIA',
     'HEADLINE_PATTERNS'
+    
     # CSV handler functions  
     'get_csv_metadata',
     'infer_column_role',
     'get_sample_values'
+
+    # Table Extractor
+    'TableExtractor'
 ]
