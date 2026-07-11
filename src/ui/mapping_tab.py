@@ -97,6 +97,10 @@ def render_mapping_tab(pdf_path: str, csv_paths: List[str]):
         metadata = get_csv_metadata(csv_path)
         csv_metadata_list.append(metadata)
 
+    # Step 4: Initialize mapping storage in sesssion state
+    if 'headline_mappings' not in st.session_state:
+        st.session_state.headline_mappings = {} # {headline_id: {csv_filename]}
+
     st.subheader(f"Available CSV Files ({len(csv_metadata_list)})")
     for i, csv_meta in enumerate(csv_metadata_list, 1):
         with st.expander(f"CSV {i}: {csv_meta['filename']} ({csv_meta['row_count']} rows)"):
@@ -153,56 +157,45 @@ def render_mapping_tab(pdf_path: str, csv_paths: List[str]):
         )
         
         if selected_headline:
-            # Show headline details
-            st.subheader(f"Mapping: {selected_headline['text']}")
-            st.write(f"**Page {selected_headline['page']}** | Level H{selected_headline['level']}")
-            
-            # Show headline context (paragraphs)
-            if 'paragraphs' in selected_headline and selected_headline['paragraphs']:
-                with st.expander("Headline Context (paragraphs)", expanded=False):
-                    for i, para in enumerate(selected_headline['paragraphs'][:3]):
-                        st.write(f"**Paragraph {i+1}**: {para}")
-            
-            st.divider()
-            
-            # Show some CSV column previews (top 5 metrics)
-            st.write("### CSV Columns Preview")
-            st.info("Multiple CSV support coming soom - for nwo check the expanders above")
-            
-            st.divider()
-            
-            # Mapping controls (simple confirmation)
-            mapping_config = render_mapping_controls(selected_headline, "multiple_csvs")
-            
-            # Save mapping button
-            if st.button("Save Mapping", type="primary"):
-                # Build mapping object
-                new_mapping = {
-                    'headline_id': selected_headline_id,
-                    'headline': selected_headline,
-                    'csv_files': [meta['filename'] for meta in csv_metadata_list],
-                    'status': 'confirmed',
-                    'created_at': datetime.now().isoformat()
-                }
-                
-                # Check if mapping already exists
-                existing_idx = next(
-                    (i for i, m in enumerate(st.session_state.mappings) 
-                     if m['headline_id'] == selected_headline_id),
-                    None
-                )
-                
-                if existing_idx is not None:
-                    # Update existing
-                    st.session_state.mappings[existing_idx] = new_mapping
-                    st.success(f"Updated mapping for: {selected_headline['text']}")
-                else:
-                    # Add new
-                    st.session_state.mappings.append(new_mapping)
-                    st.success(f"Saved mapping for: {selected_headline['text']}")
-                
-                # Persist to JSON file
-                _persist_mappings_to_json(st.session_state.mappings)
+            st.markdown("### Headline Details")
+            st.write(f"**Text**: {selected_headline['text']}")
+            st.write(f"**Page:** {selected_headline['page']}")
+           
+           # Show paragraphs
+           if selected_headline.get('paragraphs'):
+               st.markdown("**Paragraphs:**")
+               for i, para in enumerate(selected_headline['paragraphs'], 1):
+                   with st.expander(f"Paragraph {i}"):
+                       st.write(para)
+            st.markdown("---")
+
+            # CSV Selection UI
+            st.markdown(" Map to CSV Files")
+            st.write("Selected with CSV files contain data for this headline and paragraph:")
+
+            # Create options list: CSV filenames
+            csv_options = [meta['filename'] for meta in csv_metadata_list]
+
+            # Get current mapping for this headline (if exists)
+            headline_id = f"h{selected_headline['page']}_{selected_headline['text'][:50]}"
+            current_mapping = st.session_state.headline_mappings.get(headline_id, [])
+
+            # Multi-select widget
+            selected_csvs = st.multiselect(
+                "Choose CSV file(s):", 
+                options= csv_options, 
+                default = current_mapping,
+                key= f"csv_select_{headline_id}",
+                help = "You can select multifile CSV's to map to this headline - see paragraph as well]"
+            )
+            # Upadate mapping in session state
+            if selected_csvs:
+                st.session_state.headline_mappings[headline_id] = selected_csvs
+                st.success(f"Mapped to {len(selected_csvs)} CSV(s)")
+            else:
+                # Remove mapping if user deselects all
+                if headline_id in st.stession_state.headline_mappings:
+                    del st.session_state.headline_mappings[headline_id]
     
     # Step 6: Show all saved mappings
     st.divider()
