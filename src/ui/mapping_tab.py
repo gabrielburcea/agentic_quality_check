@@ -190,29 +190,53 @@ def render_mapping_tab(pdf_path: str, csv_paths: List[str]):
     
     # Step 8: Show all saved mappings
     st.divider()
-    st.subheader("Saved Mappings")
+    st.subheader("Save Mappings")
     
-    if st.session_state.mappings:
-        st.write(f"**{len(st.session_state.mappings)} mappings created**")
+    if st.session_state.headline_mappings:
+        st.write(f"**{len(st.session_state.headline_mappings)} headlines mapped**")
         
-        for mapping in st.session_state.mappings:
-            with st.expander(f"{mapping['headline']['text']} (page {mapping['headline']['page']})"):
-                st.write(f"**Headline ID**: {mapping['headline_id']}")
-                st.write(f"**CSV Files**: {', '.join(mapping.get('csv_files', ['unknown']))}")
-                st.write(f"**Status**: {mapping['status']}")
-                st.write(f"**Created**: {mapping['created_at']}")
+        # Show preview
+        with st.expander("Preview mappings"):
+            for headline_id, csv_files in st.session_state.headline_mappings.items():
+                st.write(f"- {headline_id}: {', '.join(csv_files)}")
         
-        # Export button
-        if st.button("Export Mappings to JSON"):
-            json_str = json.dumps(st.session_state.mappings, indent=2)
-            st.download_button(
-                label="Download mappings.json",
-                data=json_str,
-                file_name=f"mappings_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json",
-                mime="application/json"
-            )
+        if st.button("Save All Mappings to Volume", type="primary"):
+            # Build structured mapping data
+            mappings_data = {
+                'pdf_filename': os.path.basename(pdf_path),
+                'csv_files': [meta['filename'] for meta in csv_metadata_list],
+                'created_at': datetime.now().isoformat(),
+                'mappings': []
+            }
+            
+            # Convert headline_mappings to structured format
+            for headline in headlines:
+                headline_id = f"h{headline['page']}_{headline['text'][:50]}"
+                
+                if headline_id in st.session_state.headline_mappings:
+                    mappings_data['mappings'].append({
+                        'headline_id': headline_id,
+                        'headline_text': headline['text'],
+                        'headline_page': headline['page'],
+                        'paragraphs': headline.get('paragraphs', []),
+                        'csv_files': st.session_state.headline_mappings[headline_id]
+                    })
+            
+            # Save to Unity Catalog volume
+            volume_path = "/Volumes/my_catalog/agentic_quality_check_dev/mappings_volume/"
+            mapping_filename = f"{os.path.splitext(os.path.basename(pdf_path))[0]}_mappings.json"
+            full_path = os.path.join(volume_path, mapping_filename)
+            
+            with open(full_path, 'w') as f:
+                json.dump(mappings_data, f, indent=2)
+            
+            st.success(f"Saved {len(mappings_data['mappings'])} mappings to: {full_path}")
+            
+            # Show saved data
+            with st.expander("View saved JSON"):
+                st.json(mappings_data)
     else:
-        st.info("No mappings created yet. Select a headline above and click 'Save Mapping'.")
+        st.info("No mappings yet. Select CSV files for headlines above.")
 
 
 ###############################################
@@ -260,3 +284,4 @@ def _persist_mappings_to_json(mappings: List[Dict], volume_path: str = None):
         st.success(f"Persisted to {filepath}")
     except Exception as e:
         st.error(f"Failed to save: {e}")
+
