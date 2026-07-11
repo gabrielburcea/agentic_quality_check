@@ -91,32 +91,18 @@ def render_mapping_tab(pdf_path: str, csv_paths: List[str]):
     
     st.header("Headline-to-CSV Mapping")
     st.write("Select headlines to verify. Agent will handle the rest.")
-    
+
+    # Step 2: Load CSV metadata
     csv_metadata_list = []
     for csv_path in csv_paths:
         metadata = get_csv_metadata(csv_path)
         csv_metadata_list.append(metadata)
-
-    # Step 4: Initialize mapping storage in sesssion state
+    
+    # Step 3: Initialize mapping storage in session state
     if 'headline_mappings' not in st.session_state:
-        st.session_state.headline_mappings = {} # {headline_id: {csv_filename]}
+        st.session_state.headline_mappings = {}
 
-    st.subheader(f"Available CSV Files ({len(csv_metadata_list)})")
-    for i, csv_meta in enumerate(csv_metadata_list, 1):
-        with st.expander(f"CSV {i}: {csv_meta['filename']} ({csv_meta['row_count']} rows)"):
-            st.write(f"**Columns:** {csv_meta['column_count']}")
-
-            # Show filter columns
-            filter_cols = [col for col in csv_meta['columns'] if col['role']== 'filter']
-            st.write("**Filter columns:**")
-            for col in filter_cols:
-                st.write(f" -{col['name']}: {col['sample_values']}")
-            
-            # Show metric count only(Don't list them all)
-            metric_count = len([col for col in csv_meta['columns'] if col['role'] == 'metric'])
-            st.write(f"**Data metrics:** {metric_count} available")
-
-    # Step 1: Load or parse PDF
+    # Step 4: Load or parse PDF
     if 'pdf_metadata' not in st.session_state:
         if pdf_path:
             with st.spinner("Parsing PDF..."):
@@ -126,19 +112,19 @@ def render_mapping_tab(pdf_path: str, csv_paths: List[str]):
             st.warning("No PDF uploaded. Go to Tab 1 to upload PDF.")
             return
     
-    # Step 3: Extract data from session state
+    # Step 5: Extract data from session state
     pdf_meta = st.session_state.pdf_metadata
     
     headlines = pdf_meta['headlines']
     
     
-    # Step 4: Initialize mappings storage
+    # Step 6: Initialize mappings storage
     if 'mappings' not in st.session_state:
         st.session_state.mappings = []
     
     st.divider()
     
-    # Step 5: Two-column layout
+    # Step 7: Two-column layout
     col_left, col_right = st.columns([1, 2])
     
     with col_left:
@@ -202,7 +188,7 @@ def render_mapping_tab(pdf_path: str, csv_paths: List[str]):
         else:
             st.info("Select a headline from the tree to map it to CSV files")
     
-    # Step 6: Show all saved mappings
+    # Step 8: Show all saved mappings
     st.divider()
     st.subheader("Saved Mappings")
     

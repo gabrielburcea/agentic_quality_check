@@ -102,10 +102,31 @@ with tab2:
             st.success(f"Uploaded: {uploaded_csv.name}")
             
         # Store list in session state
-
         st.session_state.csv_paths = csv_paths
 
         st.info(f"**{len(csv_paths)} CSV files uploaded:**")
+        
+        # Display CSV file details
+        st.divider()
+        st.subheader(f"Available CSV Files ({len(csv_paths)})")
+        
+        from src.utils import get_csv_metadata
+        
+        for i, csv_path in enumerate(csv_paths, 1):
+            metadata = get_csv_metadata(csv_path)
+            
+            with st.expander(f"CSV {i}: {metadata['filename']} ({metadata['row_count']} rows)"):
+                st.write(f"**Columns:** {metadata['column_count']}")
+
+                # Show filter columns
+                filter_cols = [col for col in metadata['columns'] if col['role'] == 'filter']
+                st.write("**Filter columns:**")
+                for col in filter_cols:
+                    st.write(f" - {col['name']}: {col['sample_values']}")
+                
+                # Show metric count only
+                metric_count = len([col for col in metadata['columns'] if col['role'] == 'metric'])
+                st.write(f"**Data metrics:** {metric_count} available")
     
 ########################################
 # Tab 3: Mapping (using our new UI) ###
