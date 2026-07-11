@@ -188,7 +188,7 @@ def render_mapping_tab(pdf_path: str, csv_paths: List[str]):
         else:
             st.info("Select a headline from the tree to map it to CSV files")
     
-    # Step 8: Show all saved mappings
+    # Step 8: Save mappings
     st.divider()
     st.subheader("Save Mappings")
     
@@ -214,26 +214,24 @@ def render_mapping_tab(pdf_path: str, csv_paths: List[str]):
                 
                 if headline_id in st.session_state.headline_mappings:
                     mappings_data['mappings'].append({
-                        'headline_id': headline_id,
                         'headline_text': headline['text'],
                         'headline_page': headline['page'],
                         'paragraphs': headline.get('paragraphs', []),
                         'csv_files': st.session_state.headline_mappings[headline_id]
                     })
-            # Now compute unique CSV files from all mappings
-            mappings_data['csv_files'] = list(set([csv for mapping in mappings_data['mappings'] for csv in mapping['csv_files']]))
+            
             # Save to Unity Catalog volume
             try:
                 volume_path = "/Volumes/my_catalog/agentic_quality_check_dev/mappings_volume/"
-                # Create a directory if it doesn't exist
                 os.makedirs(volume_path, exist_ok=True)
-            except (PermissionError, FileNotFoundError): #Fall back to local tmp directory (local development)
+            except (PermissionError, FileNotFoundError):
+                # Fall back to local tmp directory (local development)
                 volume_path = "/tmp/mappings_volume/"
                 os.makedirs(volume_path, exist_ok=True)
+            
             mapping_filename = f"{os.path.splitext(os.path.basename(pdf_path))[0]}_mappings.json"
             full_path = os.path.join(volume_path, mapping_filename)
             
-          
             with open(full_path, 'w') as f:
                 json.dump(mappings_data, f, indent=2)
             
@@ -291,4 +289,3 @@ def _persist_mappings_to_json(mappings: List[Dict], volume_path: str = None):
         st.success(f"Persisted to {filepath}")
     except Exception as e:
         st.error(f"Failed to save: {e}")
-
