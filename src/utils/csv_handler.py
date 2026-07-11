@@ -112,7 +112,7 @@ def is_numeric_with_suppression(series: pd.Series) -> bool:
 
     # If at least 70% of values are numeric it;s a metric with suppression
 
-    if numeric_count / total_count >= 0.7:
+    if numeric_count / total_count >= 0.3:
         return True
     else:
         return False
