@@ -50,7 +50,7 @@ from .components import render_headline_tree, render_column_preview, render_mapp
 #### Main Orchestrator Function ###############
 ###############################################
 
-def render_mapping_tab(pdf_path: str = None, csv_paths: List[str]):
+def render_mapping_tab(pdf_path: str, csv_paths: List[str]):
     """
     Main entry point for the mapping tab.
     
