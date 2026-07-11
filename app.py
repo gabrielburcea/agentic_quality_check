@@ -82,7 +82,7 @@ with tab2:
     st.write("Upload the CSV containing headlines to verify against")
 
     # File uploader
-    uploaded_csv = st.file_uploader(
+    uploaded_csvs = st.file_uploader(
         "Choose a CSV files", 
         type=['csv'],
         accept_multiple_files= True,
@@ -103,7 +103,7 @@ with tab2:
             
         # Store list in session state
 
-        st.session_state.csv_paths - csv_paths
+        st.session_state.csv_paths = csv_paths
 
         st.info(f"**{len(csv_paths)} CSV files uploaded:**")
     
@@ -114,11 +114,11 @@ with tab2:
 with tab3:
     # Check if PDF and CSV are uploaded
 
-    if 'pdf_path' in st.session_state and 'csv_path' in st.session_state:
+    if 'pdf_path' in st.session_state and 'csv_paths' in st.session_state:
         # Render the mapping interface
         render_mapping_tab(
             pdf_path=st.session_state.pdf_path,
-            csv_path=st.session_state.csv_paths
+            csv_paths=st.session_state.csv_paths
         )
     else:
         st.warning("Please upload PDF and CSV files first (Tab 1 and 2)")
