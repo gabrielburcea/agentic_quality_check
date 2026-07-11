@@ -158,20 +158,21 @@ def render_mapping_tab(pdf_path: str, csv_paths: List[str]):
         
         if selected_headline:
             st.markdown("### Headline Details")
-            st.write(f"**Text**: {selected_headline['text']}")
+            st.write(f"**Text:** {selected_headline['text']}")
             st.write(f"**Page:** {selected_headline['page']}")
-           
-           # Show paragraphs
-           if selected_headline.get('paragraphs'):
-               st.markdown("**Paragraphs:**")
-               for i, para in enumerate(selected_headline['paragraphs'], 1):
-                   with st.expander(f"Paragraph {i}"):
-                       st.write(para)
+            
+            # Show paragraphs
+            if selected_headline.get('paragraphs'):
+                st.markdown("**Paragraphs:**")
+                for i, para in enumerate(selected_headline['paragraphs'], 1):
+                    with st.expander(f"Paragraph {i}"):
+                        st.write(para)
+            
             st.markdown("---")
 
             # CSV Selection UI
-            st.markdown(" Map to CSV Files")
-            st.write("Selected with CSV files contain data for this headline and paragraph:")
+            st.markdown("### Map to CSV Files")
+            st.write("Select which CSV file(s) contain data for this headline:")
 
             # Create options list: CSV filenames
             csv_options = [meta['filename'] for meta in csv_metadata_list]
@@ -183,19 +184,23 @@ def render_mapping_tab(pdf_path: str, csv_paths: List[str]):
             # Multi-select widget
             selected_csvs = st.multiselect(
                 "Choose CSV file(s):", 
-                options= csv_options, 
-                default = current_mapping,
-                key= f"csv_select_{headline_id}",
-                help = "You can select multifile CSV's to map to this headline - see paragraph as well]"
+                options=csv_options, 
+                default=current_mapping,
+                key=f"csv_select_{headline_id}",
+                help="You can select multiple CSVs if the headline needs data from different sources"
             )
-            # Upadate mapping in session state
+            
+            # Update mapping in session state
             if selected_csvs:
                 st.session_state.headline_mappings[headline_id] = selected_csvs
                 st.success(f"Mapped to {len(selected_csvs)} CSV(s)")
             else:
                 # Remove mapping if user deselects all
-                if headline_id in st.stession_state.headline_mappings:
+                if headline_id in st.session_state.headline_mappings:
                     del st.session_state.headline_mappings[headline_id]
+        
+        else:
+            st.info("Select a headline from the tree to map it to CSV files")
     
     # Step 6: Show all saved mappings
     st.divider()
