@@ -72,9 +72,11 @@ def infer_column_role(series: pd.Series) -> str:
         
     # Rule 2: Text columns
     elif series.dtype == 'object':
+        if is_numeric_with_suppression(series):
+            return 'metric'
         # If < 50 unique values -> categorical filter
         # Example: sex column: ['Male', 'Female', 'Total'] (3 unique)
-        if series.nunique() < 50:
+        elif series.nunique() < 50:
             return 'filter'
         
         # if many unique values -> probably an ID 
@@ -83,6 +85,37 @@ def infer_column_role(series: pd.Series) -> str:
             return 'identifier'
     # Fallback for rare types
     return 'unknown'
+
+def is_numeric_with_suppression(series: pd.Series) -> bool:
+    """
+    Detect if a column is numeric but has suppression markers like 'c'
+
+    Returns True if:
+    - Column dtype is 'object'(text)
+    -Most values can be converted to numbers
+    - Non-numeric values are suppression markers ('c', 'z', 'x', etc.)
+
+    Example:
+        >>> series = pd.Series(['20.5', 'c', '21.0', '22.5', 'z', '23.0'])
+        >>> is_numeric_with_supression(series) -> True
+    """
+    # Only check text columns 
+    if series.dtype != 'object':
+        return False
+    
+    # Try to convert to numeric, coercing errors to Nan
+    numeric_converted = pd.to_numeric(series, errors='coerce')
+
+    # Count how many values converted succesfully
+    numeric_count = numeric_converted.notna().sum()
+    total_count = len(series)
+
+    # If at least 70% of values are numeric it;s a metric with suppression
+
+    if numeric_count / total_count >= 0.7:
+        return True
+    else:
+        return False
 
 #####################################
 #### Get Sample Values Function #####
