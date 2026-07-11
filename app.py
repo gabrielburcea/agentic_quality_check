@@ -85,7 +85,7 @@ with tab2:
     uploaded_csv = st.file_uploader(
         "Choose a CSV files", 
         type=['csv'],
-        accept_multiple_files= Trur,
+        accept_multiple_files= True,
         help="Upload the CSV document containing data to verify against"
     )
 
