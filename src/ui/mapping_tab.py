@@ -227,6 +227,8 @@ def render_mapping_tab(pdf_path: str, csv_paths: List[str]):
             mapping_filename = f"{os.path.splitext(os.path.basename(pdf_path))[0]}_mappings.json"
             full_path = os.path.join(volume_path, mapping_filename)
             
+            # Create a directory if it doesn't exist
+            os.makedirs(volume_path, exist_ok=True)
             with open(full_path, 'w') as f:
                 json.dump(mappings_data, f, indent=2)
             
