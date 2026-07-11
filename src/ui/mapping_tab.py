@@ -204,7 +204,6 @@ def render_mapping_tab(pdf_path: str, csv_paths: List[str]):
             # Build structured mapping data
             mappings_data = {
                 'pdf_filename': os.path.basename(pdf_path),
-                'csv_files': [meta['filename'] for meta in csv_metadata_list],
                 'created_at': datetime.now().isoformat(),
                 'mappings': []
             }
@@ -221,7 +220,8 @@ def render_mapping_tab(pdf_path: str, csv_paths: List[str]):
                         'paragraphs': headline.get('paragraphs', []),
                         'csv_files': st.session_state.headline_mappings[headline_id]
                     })
-            
+            # Now compute unique CSV files from all mappings
+            mappings_data['csv_files'] = list(set([csv for mapping in mappings_data['mappings'] for csv in mapping['csv_files']]))
             # Save to Unity Catalog volume
             try:
                 volume_path = "/Volumes/my_catalog/agentic_quality_check_dev/mappings_volume/"
