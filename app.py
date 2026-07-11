@@ -83,23 +83,30 @@ with tab2:
 
     # File uploader
     uploaded_csv = st.file_uploader(
-        "Choose a CSV file", 
+        "Choose a CSV files", 
         type=['csv'],
+        accept_multiple_files= Trur,
         help="Upload the CSV document containing data to verify against"
     )
 
-    if uploaded_csv:
-        # Save to temporary location
-        csv_path = f"/tmp/{uploaded_csv.name}"
+    if uploaded_csvs:
+        csv_paths=[] 
 
-        with open(csv_path, "wb") as f:
-            f.write(uploaded_csv.getbuffer())
+        for uploaded_csv in uploaded_csvs:
+            csv_path = f"/tmp/{uploaded_csv.name}"
 
-        st.success(f"CSV uploaded: {uploaded_csv.name}")
-        st.session_state.csv_path = csv_path
+            with open(csv_path, 'wb') as f:
+                f.write(uploaded_csv.getbuffer())
 
-        st.info(f"**Saved to**: {csv_path}")
+            csv_paths.append(csv_path)
+            st.success(f"Uploaded: {uploaded_csv.name}")
+            
+        # Store list in session state
 
+        st.session_state.csv_paths - csv_paths
+
+        st.info(f"**{len(csv_paths)} CSV files uploaded:**")
+    
 ########################################
 # Tab 3: Mapping (using our new UI) ###
 ########################################
@@ -111,7 +118,7 @@ with tab3:
         # Render the mapping interface
         render_mapping_tab(
             pdf_path=st.session_state.pdf_path,
-            csv_path=st.session_state.csv_path
+            csv_path=st.session_state.csv_paths
         )
     else:
         st.warning("Please upload PDF and CSV files first (Tab 1 and 2)")
@@ -120,7 +127,9 @@ with tab3:
 
         st.write("**Current Status:**")
         st.write(f"- PDF: {'Uploaded' if 'pdf_path' in st.session_state else 'Not uploaded'}")
-        st.write(f"- CSV: {'Uploaded' if 'csv_path' in st.session_state else 'Not uploaded'}")
+        st.write(f"- CSV: {'Uploaded' if 'csv_paths' in st.session_state else 'Not uploaded'}")
+        if 'csv_paths' in st.session_state:
+            st.write(f" ({len(st.session_state.csv_paths)} file uploaded)")
 
 ########################################
 # Tab 4: Results (placeholder) ########

@@ -50,7 +50,7 @@ from .components import render_headline_tree, render_column_preview, render_mapp
 #### Main Orchestrator Function ###############
 ###############################################
 
-def render_mapping_tab(pdf_path: str = None, csv_path: str = None):
+def render_mapping_tab(pdf_path: str = None, csv_paths: List[str]):
     """
     Main entry point for the mapping tab.
     
@@ -92,6 +92,26 @@ def render_mapping_tab(pdf_path: str = None, csv_path: str = None):
     st.header("Headline-to-CSV Mapping")
     st.write("Select headlines to verify. Agent will handle the rest.")
     
+    csv_metadata_list = []
+    for csv_path in csv_paths:
+        metadata = get_csv_metadata(csv_path)
+        csv_metadata_list.append(metadata)
+
+    st.subheader(f"Available CSV Files ({len(csv_metadata_list)})")
+    for i, csv_meta in enumerate(csv_metadata_list, 1):
+        with st.expander(f"CSV {i}: {csv_meta['filename']} ({csv_meta['row_count']} rows)"):
+            st.write(f"**Columns:** {csv_meta['column_count']}")
+
+            # Show filter columns
+            filter_cols = [col for col in csv_meta['columns'] if col['role']== 'filter']
+            st.write("**Filter columns:**")
+            for col in filter_cols:
+                st.write(f" -{col['name']}: {col['sample_values']}")
+            
+            # Show metric count only(Don't list them all)
+            metric_count = len([col for col in csv_meta['columns'] if col['role'] == 'metric'])
+            st.write(f"**Data metrics:** {metric_count} available")
+
     # Step 1: Load or parse PDF
     if 'pdf_metadata' not in st.session_state:
         if pdf_path:
@@ -102,24 +122,11 @@ def render_mapping_tab(pdf_path: str = None, csv_path: str = None):
             st.warning("No PDF uploaded. Go to Tab 1 to upload PDF.")
             return
     
-    # Step 2: Load or parse CSV
-    if 'csv_metadata' not in st.session_state:
-        if csv_path:
-            with st.spinner("Parsing CSV..."):
-                st.session_state.csv_metadata = get_csv_metadata(csv_path)
-                st.session_state.csv_file_name = os.path.basename(csv_path)
-            st.success("CSV parsed successfully")
-        else:
-            st.warning("No CSV uploaded. Go to Tab 2 to upload CSV.")
-            return
-    
     # Step 3: Extract data from session state
     pdf_meta = st.session_state.pdf_metadata
-    csv_meta = st.session_state.csv_metadata
-    csv_file_name = st.session_state.get('csv_file_name', 'unknown.csv')
     
     headlines = pdf_meta['headlines']
-    csv_columns = csv_meta['columns']
+    
     
     # Step 4: Initialize mappings storage
     if 'mappings' not in st.session_state:
@@ -160,16 +167,12 @@ def render_mapping_tab(pdf_path: str = None, csv_path: str = None):
             
             # Show some CSV column previews (top 5 metrics)
             st.write("### CSV Columns Preview")
-            st.write("These are the available data columns. Agent will select automatically.")
-            
-            metric_cols = [col for col in csv_columns if col['role'] == 'metric'][:5]
-            for col in metric_cols:
-                render_column_preview(col)
+            st.info("Multiple CSV support coming soom - for nwo check the expanders above")
             
             st.divider()
             
             # Mapping controls (simple confirmation)
-            mapping_config = render_mapping_controls(selected_headline, csv_file_name)
+            mapping_config = render_mapping_controls(selected_headline, "multiple_csvs")
             
             # Save mapping button
             if st.button("Save Mapping", type="primary"):
@@ -177,7 +180,7 @@ def render_mapping_tab(pdf_path: str = None, csv_path: str = None):
                 new_mapping = {
                     'headline_id': selected_headline_id,
                     'headline': selected_headline,
-                    'csv_file': csv_file_name,
+                    'csv_files': [meta['filename'] for meta in csv_metadata_list],
                     'status': 'confirmed',
                     'created_at': datetime.now().isoformat()
                 }
@@ -211,7 +214,7 @@ def render_mapping_tab(pdf_path: str = None, csv_path: str = None):
         for mapping in st.session_state.mappings:
             with st.expander(f"{mapping['headline']['text']} (page {mapping['headline']['page']})"):
                 st.write(f"**Headline ID**: {mapping['headline_id']}")
-                st.write(f"**CSV File**: {mapping['csv_file']}")
+                st.write(f"**CSV Files**: {', '.join(mapping.get('csv_files', ['unknown']))}")
                 st.write(f"**Status**: {mapping['status']}")
                 st.write(f"**Created**: {mapping['created_at']}")
         

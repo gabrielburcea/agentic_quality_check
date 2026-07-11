@@ -99,7 +99,7 @@ class TableExtractor:
 
             # Step 3: Validate code safety (no imports, file ops, system calls)
             if not self._is_safe_pandas_code(pandas_code):
-                raise SecurityError("Generated code contains unsafe operations")
+                raise ValueError("Generated code contains unsafe operations")
 
             # Step 4: Load CSV and execute code
             df = pd.read_csv(csv_path)
@@ -124,7 +124,7 @@ class TableExtractor:
             return result
             
         except Exception as e:
-            return {
+            error_dict = {
                 'headline_id': headline.get('id', 'unknown'), 
                 'headline_text': headline['text'],
                 'extracted_table': [],
@@ -132,6 +132,10 @@ class TableExtractor:
                 'confidence': 0.0,
                 'extracted_at': datetime.now().isoformat()
             }
+            # Include the generated code if available (for debugging)
+            if 'pandas_code' in locals():
+                error_dict['pandas_code'] = pandas_code
+            return error_dict
 
     def _build_extraction_prompt(self, headline: Dict, column_metadata: List[Dict]) -> str:
         """
@@ -265,6 +269,27 @@ Now generate pandas code for this headline:
 
         # Clean up common formatting issues
         pandas_code = pandas_code.replace("```python", "").replace("```", "").strip()
+        
+        # Filter out non-code lines (LLM often adds "Headline:", "Pandas code:", "Document:" etc)
+        # Keep only lines that look like Python code
+        code_lines = []
+        for line in pandas_code.split('\n'):
+            line = line.strip()
+            # Skip empty lines
+            if not line:
+                continue
+            # Skip lines that are clearly not Python (start with common prompt markers)
+            if any(line.startswith(marker) for marker in ['Headline:', 'Pandas code:', 'Document:', 'Example:', 'Instructions:', 'Output:', 'Now']):
+                continue
+            # Skip lines that are just quoted strings (like "Attainment by gender")
+            if line.startswith('"') and line.endswith('"') and '=' not in line:
+                continue
+            # Only keep lines that contain Python operators or keywords
+            # Valid Python lines should have = or ( or [ or function calls
+            if any(char in line for char in ['=', '(', '[', '.']):
+                code_lines.append(line)
+        
+        pandas_code = '\n'.join(code_lines)
 
         return pandas_code
 
