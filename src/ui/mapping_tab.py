@@ -223,12 +223,17 @@ def render_mapping_tab(pdf_path: str, csv_paths: List[str]):
                     })
             
             # Save to Unity Catalog volume
-            volume_path = "/Volumes/my_catalog/agentic_quality_check_dev/mappings_volume/"
+            try:
+                volume_path = "/Volumes/my_catalog/agentic_quality_check_dev/mappings_volume/"
+                # Create a directory if it doesn't exist
+                os.makedirs(volume_path, exist_ok=True)
+            except (PermissionError, FileNotFoundError): #Fall back to local tmp directory (local development)
+                volume_path = "/tmp/mappings_volume/"
+                os.makedirs(volume_path, exist_ok=True)
             mapping_filename = f"{os.path.splitext(os.path.basename(pdf_path))[0]}_mappings.json"
             full_path = os.path.join(volume_path, mapping_filename)
             
-            # Create a directory if it doesn't exist
-            os.makedirs(volume_path, exist_ok=True)
+          
             with open(full_path, 'w') as f:
                 json.dump(mappings_data, f, indent=2)
             
