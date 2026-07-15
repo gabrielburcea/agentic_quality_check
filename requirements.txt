@@ -15,21 +15,17 @@ numpy==1.26.2
 pdfplumber>=0.10.0
 
 # ========================================
-# Layer 4 - Agent Orchestration (NOW ACTIVE)
-# ========================================
-
-# LLM inference - Phi-3-Mini for table extraction
-transformers==4.36.0  # HuggingFace transformers for Phi-3-Mini
-torch==2.2.0          # PyTorch backend for model inference
-accelerate>=0.25.0    # Efficient model loading and device management
-
-# ========================================
-# Future dependencies (RAG layer - not yet needed)
+# Future dependencies (Layer 4 - Agent Orchestration)
+# Uncomment when building RAG/agent layers
 # ========================================
 
 # RAG and embeddings
 # sentence-transformers==2.2.2
 # faiss-cpu==1.8.0
+
+# LLM inference
+# transformers==4.36.0
+# torch==2.2.0
 
 # LangChain ecosystem - Multi-agent orchestration
 # langchain
@@ -49,3 +45,10 @@ python-dotenv==1.0.0
 # - sys
 # - os
 # - re
+
+
+######################################
+# LLM inference 
+# transformers==4.36.0 # Huggin Face transformers for Phi-3-Mini
+# torch== 2.2.0 # Pytorch backend for model inference
+# accelerate>=0.25.0 # Efficient model loading and device management
