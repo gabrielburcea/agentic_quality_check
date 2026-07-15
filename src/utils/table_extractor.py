@@ -56,8 +56,7 @@ class TableExtractor:
                 config=config,
                 device_map='cpu',
                 torch_dtype="auto",
-                trust_remote_code=True,
-                attn_implementation='eager'
+                trust_remote_code=True
             )
             print("Model loaded successfully")
         except Exception as e:

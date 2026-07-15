@@ -539,6 +539,414 @@ if st.button("✅ Looks Good - Proceed to Quality Check"):
 
 ---
 
+
+
+---
+
+## 📋 **DETAILED END-TO-END FLOW: "Attainment by Gender" Example**
+
+<table>
+<tr>
+<th width="30%">🔍 Phase</th>
+<th width="40%">📊 What Happens</th>
+<th width="30%">💻 Output</th>
+</tr>
+
+<!-- Phase 1: PDF Parsing -->
+<tr>
+<td>
+
+**Phase 1: PDF Parsing**
+(Layer 1 - ✅ Complete)
+
+</td>
+<td>
+
+**Input**: PDF Page 3
+
+**Process**:
+* pdfplumber analyzes fonts
+* Extracts headline + paragraphs
+* Builds hierarchy
+
+**Text Extracted**:
+"Attainment by gender"
+
+Paragraphs: "Of eligible pupils in year 4, a slightly larger proportion of girls took the check than boys (97% and 95% respectively)... the average score for girls was 19.6 while the average score for boys was 20.0..."
+
+</td>
+<td>
+
+```json
+{
+  "headline_text": 
+    "Attainment by gender",
+  "headline_page": 3,
+  "paragraphs": [
+    "Of eligible pupils..."
+  ]
+}
+```
+
+</td>
+</tr>
+
+<!-- Phase 2: CSV Parsing -->
+<tr>
+<td>
+
+**Phase 2: CSV Parsing**
+(Layer 1 - ✅ Complete)
+
+</td>
+<td>
+
+**Input**: `mtc_national_pupil_characteristics_2022_to_2025.csv` (4,494 rows)
+
+**Process**:
+* pandas reads structure
+* csv_handler classifies columns:
+  * **Filters**: sex, time_period, geographic_level
+  * **Metrics**: mtc_score_average, completed_check_pupil_percent, working_below_pupil_percent
+
+</td>
+<td>
+
+```json
+{
+  "filename": "mtc_...csv",
+  "row_count": 4494,
+  "columns": [
+    {
+      "name": "sex",
+      "role": "filter",
+      "sample_values": 
+        ["Boys", "Girls", "Total"]
+    },
+    {
+      "name": "mtc_score_average",
+      "role": "metric"
+    }
+  ]
+}
+```
+
+</td>
+</tr>
+
+<!-- Phase 3: User Mapping -->
+<tr>
+<td>
+
+**Phase 3: User Mapping**
+(Layer 3 - ✅ Complete)
+
+</td>
+<td>
+
+**UI Workflow (Streamlit Tab 3)**:
+1. User sees headline tree (left panel)
+2. Selects "Attainment by gender"
+3. Right panel shows:
+   * Headline text
+   * Full paragraphs
+   * CSV file multiselect
+4. User maps to CSV file(s)
+5. Clicks "Save All Mappings to Volume"
+
+**Saved to**: `/tmp/mappings_volume/` (local) or UC Volume (Databricks)
+
+</td>
+<td>
+
+```json
+{
+  "pdf_filename": 
+    "Multiplication_check.pdf",
+  "created_at": "2025-01-11...",
+  "mappings": [{
+    "headline_text": 
+      "Attainment by gender",
+    "headline_page": 3,
+    "paragraphs": ["..."],
+    "csv_files": [
+      "mtc_national_pupil...csv"
+    ]
+  }]
+}
+```
+
+</td>
+</tr>
+
+<!-- Phase 4: Paragraph Analysis -->
+<tr>
+<td>
+
+**Phase 4: Paragraph Analysis**
+(Layer 4 - 🔜 Next Phase)
+
+**Agent**: Text Analyzer
+
+</td>
+<td>
+
+**Phrase-by-Phrase Extraction**:
+
+1️⃣ "girls took the check than boys (97% and 95% respectively)"
+   * Filter: `sex` IN ('Boys', 'Girls')
+   * Metric: `completed_check_pupil_percent`
+   * Values: 97% (Girls), 95% (Boys)
+
+2️⃣ "average score for girls was 19.6 while... boys was 20.0"
+   * Filter: `sex` IN ('Boys', 'Girls')
+   * Metric: `mtc_score_average`
+   * Values: 19.6 (Girls), 20.0 (Boys)
+
+3️⃣ "working below the level"
+   * Metric: `working_below_pupil_percent`
+
+**Agent matches paragraph hints to CSV columns using metadata**
+
+</td>
+<td>
+
+```json
+{
+  "filters_needed": {
+    "sex": ["Boys", "Girls"],
+    "geographic_level": "National",
+    "time_period": [
+      "202122", "202223", 
+      "202324", "202425"
+    ]
+  },
+  "metrics_needed": [
+    "mtc_score_average",
+    "completed_check_pupil_percent",
+    "working_below_pupil_percent"
+  ]
+}
+```
+
+</td>
+</tr>
+
+<!-- Phase 5: Query Construction -->
+<tr>
+<td>
+
+**Phase 5: Query Construction**
+(Layer 4 - 🔜 Next Phase)
+
+</td>
+<td>
+
+**Agent generates SQL query**:
+```sql
+SELECT 
+  time_period, sex,
+  mtc_score_average,
+  completed_check_pupil_percent,
+  working_below_pupil_percent
+FROM mtc_national_pupil...csv
+WHERE sex IN ('Boys', 'Girls')
+  AND geographic_level = 'National'
+```
+
+**Executes query → Gets long-format data (8 rows)**
+
+</td>
+<td>
+
+**Filtered CSV (Long Format)**:
+```
+time   |sex   |avg  |took%
+202122 |Boys  |20.0 |95
+202122 |Girls |19.6 |97
+202223 |Boys  |20.4 |95
+202223 |Girls |19.9 |97
+202324 |Boys  |20.9 |95
+202324 |Girls |20.4 |97
+202425 |Boys  |21.2 |95
+202425 |Girls |20.7 |97
+```
+
+</td>
+</tr>
+
+<!-- Phase 6: Pivot Transformation -->
+<tr>
+<td>
+
+**Phase 6: Pivot Transformation**
+(Layer 4 - 🔜 Next Phase)
+
+**Tool**: pandas pivot_table
+
+</td>
+<td>
+
+**Agent generates pandas code**:
+```python
+# Unpivot metrics
+df_long = df.melt(
+  id_vars=['time_period', 'sex'],
+  value_vars=['mtc_score_average', 
+              'completed_check...'],
+  var_name='metric',
+  value_name='value'
+)
+
+# Pivot: rows=metrics, 
+# columns=time×sex
+df_pivot = df_long.pivot_table(
+  index='metric',
+  columns=['time_period', 'sex'],
+  values='value',
+  aggfunc='first'
+)
+```
+
+**Transforms long → wide format**
+
+</td>
+<td>
+
+**Pivoted Table (Wide Format)**:
+```
+                    2021/22     2022/23  ...
+                  Boys Girls Boys Girls
+Avg score         20.0  19.6 20.4  19.9
+Took check %      95    97   95    97
+Below expect %    3     2    4     2
+```
+
+**This matches PDF table structure!**
+
+</td>
+</tr>
+
+<!-- Phase 7: Verification -->
+<tr>
+<td>
+
+**Phase 7: Verification**
+(Layer 4 - 🔜 Next Phase)
+
+**Agent**: Numerical Verifier
+
+</td>
+<td>
+
+**Compares pivoted table values with PDF paragraph claims**:
+
+✅ PDF: "girls 19.6, boys 20.0" → CSV: Girls=19.6, Boys=20.0 (MATCH)
+
+✅ PDF: "girls 97%, boys 95%" → CSV: Girls=97, Boys=95 (MATCH)
+
+❌ PDF: "trend increasing" → CSV: Actually decreasing (MISMATCH)
+
+**Agent generates Pass/Fail report with explanations**
+
+</td>
+<td>
+
+```json
+{
+  "headline": "Attainment by gender",
+  "verification_result": "PASS",
+  "checks": [
+    {
+      "claim": "average score girls 19.6",
+      "csv_value": 19.6,
+      "status": "PASS"
+    },
+    {
+      "claim": "boys 20.0",
+      "csv_value": 20.0,
+      "status": "PASS"
+    }
+  ],
+  "summary": "All claims verified"
+}
+```
+
+</td>
+</tr>
+
+</table>
+
+### 🔑 Key Insight: How Parsing Enables Verification
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│ HEADLINE TEXT: "Attainment by gender"                      │
+│ ↓                                                           │
+│ Tells agent: Primary dimension is SEX (boys vs girls)      │
+└─────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────┐
+│ PARAGRAPH PHRASES (Hints for agent)                        │
+├─────────────────────────────────────────────────────────────┤
+│ "girls" and "boys" → sex filter values                     │
+│ "took the check" + percentages → participation metric      │
+│ "average score" + numbers → average score metric           │
+│ "working below" → below expectation metric                 │
+│ "in 2022" → time reference (need all years for trends)    │
+└─────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────┐
+│ CSV METADATA (Filter columns from Layer 1)                 │
+│ ↓                                                           │
+│ Tells agent: sex, time_period, geographic_level available  │
+│ Provides valid values: ['Boys', 'Girls', 'Total']         │
+└─────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────┐
+│ CSV METADATA (Metric columns from Layer 1)                 │
+│ ↓                                                           │
+│ Tells agent: Which columns are measurable data             │
+│ • mtc_score_average ← "average score"                     │
+│ • completed_check_pupil_percent ← "took check"            │
+│ • working_below_pupil_percent ← "working below"           │
+└─────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────┐
+│ MAPPED CSV FILE (From Layer 3)                             │
+│ ↓                                                           │
+│ Tells agent: Query THIS CSV file, not others               │
+│ mtc_national_pupil_characteristics_2022_to_2025.csv        │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### 🎯 Complete Pipeline Summary
+
+```
+PDF Headline + Paragraphs
+        ↓
+    [Parse hints: filters, metrics, dimensions]
+        ↓
+CSV Metadata (from mapping JSON)
+        ↓
+    [Match paragraph hints to CSV column names]
+        ↓
+Query CSV with filters (SQL WHERE clause)
+        ↓
+    [Get long-format data: 8 rows instead of 4,494]
+        ↓
+Pivot transformation (pandas pivot_table)
+        ↓
+    [Wide format: metrics as rows, time×sex as columns]
+        ↓
+Compare pivoted table values with PDF paragraph claims
+        ↓
+    [Verification: Pass/Fail with detailed explanations]
+```
+
+**Next Implementation**: Build Phase 4-7 agent (paragraph analyzer → query builder → pivot transformer → verifier)
+
+
 ## 🔜 **NOT STARTED: Layer 4 - Multi-Agent Orchestration**
 
 **Status**: Pending Layer 1.5 and Layer 3.
