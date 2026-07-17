@@ -222,17 +222,16 @@ def render_results_tab():
                 col1.metric("Rows", result.get('row_count', 0))
                 col2.metric("Confidence", f"{result.get('confidence', 0):.0%}")
 
-                # Show paragraph used
+                # Show paragraph used (NO NESTED EXPANDER - just display directly)
                 st.markdown("### Source Context")
-                with st.expander("View paragraph"):
-                    st.write(result.get('paragraph', 'N/A'))
+                st.markdown("**Paragraph:**")
+                st.text_area("", value=result.get('paragraph', 'N/A'), height=100, disabled=True, label_visibility="collapsed")
 
                 st.markdown(f"**CSV File**: `{result.get('csv_filename', 'N/A')}`")
 
-                # Show generated code
+                # Show generated code (NO NESTED EXPANDER - just display directly)
                 st.markdown("### Generated Code")
-                with st.expander("View pandas code"):
-                    st.code(result.get('pandas_code', 'N/A'), language='python')
+                st.code(result.get('pandas_code', 'N/A'), language='python')
 
                 # Show filters and columns
                 col1, col2 = st.columns(2)
@@ -307,7 +306,7 @@ def render_results_tab():
 
             st.success(f"✅ Saved extraction results to: `{json_path}`")
 
-            # Show preview
+            # Show preview (this expander is at top level - OK)
             with st.expander("Preview JSON Structure"):
                 st.json(extraction_output)
 
