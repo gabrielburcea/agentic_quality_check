@@ -30,10 +30,12 @@ from .components import (
 )
 
 from .mapping_tab import render_mapping_tab
+from .results_tab import render_results_tab
 
 __all__ = [
     'render_headline_tree',
     'render_column_preview',
     'render_mapping_controls',
-    'render_mapping_tab'
+    'render_mapping_tab',
+    'render_results_tab'
 ]
