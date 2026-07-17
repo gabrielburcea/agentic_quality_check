@@ -18,6 +18,9 @@ variables:
     description: The catalog to use
   schema:
     description: The schema to use
+  claude_api_key:
+    description: Claude API key from Databricks Secrets
+    default: "{{secrets/my-api-keys/claude-api-key}}"
 
 targets:
   dev:

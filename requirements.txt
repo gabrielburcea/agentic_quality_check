@@ -14,9 +14,19 @@ numpy==1.26.2
 # PDF processing (Layer 1 - Document Ingestion)
 pdfplumber>=0.10.0
 
+# ===============================================
+# Layer 4 - Agent Orchestration (NOW ACTIVE)
 # ========================================
-# Future dependencies (Layer 4 - Agent Orchestration)
-# Uncomment when building RAG/agent layers
+
+# LLM inference - Phi-3-Mini for table extraction
+transformers==4.36.0  # HuggingFace transformers for Phi-3-Mini
+torch==2.2.0          # PyTorch backend for model inference
+accelerate>=0.25.0    # Efficient model loading and device management
+anthropic>=0.18.0
+
+# ========================================
+# Future dependencies (RAG layer - not yet needed)
+
 # ========================================
 
 # RAG and embeddings
@@ -47,8 +57,11 @@ python-dotenv==1.0.0
 # - re
 
 
+
 ######################################
 # LLM inference 
 # transformers==4.36.0 # Huggin Face transformers for Phi-3-Mini
 # torch== 2.2.0 # Pytorch backend for model inference
 # accelerate>=0.25.0 # Efficient model loading and device management
+=======
+

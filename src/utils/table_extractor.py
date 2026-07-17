@@ -29,41 +29,55 @@ class TableExtractor:
 
     Model: Phi-3-Mini-4K-Instruct (3.8B params, CPU-friendly)
     """
-    def __init__(self, model_name: str = "microsoft/Phi-3-mini-4k-instruct"):
-        """
-        Initialise the LLM model for code generation
+    def __init__(self, model_name: str="microsoft/Phi-3-mini-4k-instruct", use_claude: bool = True, api_key: str = None):
 
-        Args: 
-            model_name (str): HuggingFace model ID
-        """
-        print(f"Loading {model_name}...")
-        print("⚠️ Note: Using a workaround for Phi-3 RoPE config issue")
-        
-        self.tokenizer = AutoTokenizer.from_pretrained(model_name, trust_remote_code=True)
-        
-        # Workaround: Disable rope_scaling entirely to avoid KeyError
-        from transformers import AutoConfig
-        config = AutoConfig.from_pretrained(model_name, trust_remote_code=True)
-        
-        # Completely disable RoPE scaling
-        if hasattr(config, 'rope_scaling'):
-            print("⚠️ Disabling rope_scaling to avoid config error...")
-            config.rope_scaling = None
-        
-        try:
-            self.model = AutoModelForCausalLM.from_pretrained(
-                model_name, 
-                config=config,
-                device_map='cpu',
-                torch_dtype="auto",
-                trust_remote_code=True
-            )
-            print("Model loaded successfully")
-        except Exception as e:
-            print(f"❌ Error loading model: {e}")
-            import traceback
-            traceback.print_exc()
-            raise
+        if use_claude:
+            self.use_claude = True
+            # API key must be provided when use_claude=True
+            if api_key is None:
+                raise ValueError("api_key is required when use_claude=True")
+            self.api_key = api_key
+            
+            #Initialize Anthropic client
+            import anthropic
+            import os
+            # 🔒 Safe method: Set API key via environment variable
+            os.environ["ANTHROPIC_API_KEY"] = self.api_key
+            self.client = anthropic.Anthropic()  # Auto-reads from env var
+            self.model_name = "claude-opus-4-8"  # Newer model that works with your account
+            print(f"Using Claude API: {self.model_name}")
+
+        else:
+            # Fall back to HuggingFace Phi-3-Mini
+            self.use_claude = False
+            print(f"Loading {model_name}...")
+            print("Note: Using a workaround for Phi-3 RoPe config issue")
+            
+            self.tokenizer = AutoTokenizer.from_pretrained(model_name, trust_remote_code = True)
+
+            # Workaround: Disable rope_scaling entirely to avoid KeyError
+
+            from transformers import AutoConfig
+            config = AutoConfig.from_pretrained(model_name, trust_remote_code=True)
+
+            # Completely disable RoPE scaling
+            if hasattr(config, 'rope_scaling'):
+                print("Disabling rope_scaling to avoid config error...")
+                config.rope_scaling = None
+            try:
+                self.model = AutoModelForCausalLM.from_pretrained(
+                    model_name, 
+                    config=config,
+                    device_map='cpu',
+                    torch_dtype="auto",
+                    trust_remote_code=True
+                )
+                print("Model loaded successfully")
+            except Exception as e:
+                print(f"Error loading model: {e}")
+                import traceback
+                traceback.print_exc()
+                raise
 
     def extract_table(self, headline: Dict, csv_path: str, column_metadata: List[Dict]) -> Dict:
         """
@@ -103,7 +117,9 @@ class TableExtractor:
 
             # Step 4: Load CSV and execute code
             df = pd.read_csv(csv_path)
-            extracted_df = self._execute_pandas_safely(df, pandas_code)
+            # Extract paragraph text for the execution context
+            paragraph = '\n'.join(headline.get('paragraphs', [headline.get('text', '')]))
+            extracted_df = self._execute_pandas_safely(df, pandas_code, paragraph)
 
             # Step 5: Build result
             # Cache columns once (fixes SCPAP001 lint)
@@ -170,7 +186,14 @@ class TableExtractor:
         paragraphs = "\n".join(headline.get('paragraphs', [])[:3])
 
         # Step 3: Import the static template (generic across all publications)
-        from agents.prompts.table_extraction_prompt import TABLE_EXTRACTION_PROMPT
+        import os
+        import sys
+        # Get the path to the prompts directory
+        current_dir = os.path.dirname(os.path.abspath(__file__))
+        prompts_dir = os.path.join(os.path.dirname(current_dir), 'agents', 'prompts')
+        if prompts_dir not in sys.path:
+            sys.path.insert(0, prompts_dir)
+        from table_extraction_prompt import TABLE_EXTRACTION_PROMPT
 
         # Step 4: Build final prompt - Dynamic context FIRST, then static template
         prompt = f"""
@@ -188,24 +211,48 @@ Available CSV columns:
 
     def _generate_pandas_code(self, prompt: str) -> str:
         """
-        Use Phi-3-Mini to generate pandas filtering code.
-        
-        Updated to work with the new TABLE_EXTRACTION_PROMPT template.
+        Generate pandas filtering code using Claude API or Phi-3-Mini. 
+
+        Uses Claude API if available (use_claude=True), otherwise falls back to Phi-3-Mini
         Extracts code after the prompt by looking for Python code patterns.
         """
-        inputs = self.tokenizer(prompt, return_tensors="pt")
+        if self.use_claude:
+            # Use Claude API
+            try:
+                message = self.client.messages.create(
+                    model = self.model_name, 
+                    max_tokens = 3072,  # Increased for complete code generation
+                    # Note: temperature parameter is deprecated for claude-opus-4-8
+                    messages=[{
+                        "role": "user", 
+                        "content": prompt
+                    }]
+                )
+                # Extract text from response
+                generated_text = message.content[0].text
+            except Exception as e:
+                print(f"Error calling Claude API: {e}")
+                # Fallback to simple head()
+                return "result_df = df.head(10) # Fallback: Claude API error"
+        else:
+            # Use Phi-3-Mini (HuggingFace)
 
-        # Generate code (reduced tokens for faster CPU inference)
-        outputs = self.model.generate(
-            **inputs,
-            max_new_tokens=150,  # Increased to 150 for complete code generation
-            temperature=0.1,     # Low temperature for deterministic code
-            do_sample=False
-        )
+            inputs = self.tokenizer(prompt, return_tensors="pt")
 
-        # Decode output
-        generated_text = self.tokenizer.decode(outputs[0], skip_special_tokens=True)
+            # Generate code (reduced tokens for faster CPU inference)
+            outputs = self.model.generate(
+                **inputs,
+                max_new_tokens=150,  # Increased to 150 for complete code generation
+                temperature=0.1,     # Low temperature for deterministic code
+                do_sample=False
+            )
 
+            # Decode output
+            generated_text = self.tokenizer.decode(outputs[0], skip_special_tokens=True)
+
+        # First, clean up markdown code fences
+        generated_text = generated_text.replace("```python", "").replace("```", "").strip()
+        
         # Extract code: The LLM echoes the prompt and generates new code after it
         # Strategy: Find where the new code starts after the prompt template
         # Look for the start of Python code (common patterns after few-shot examples)
@@ -223,47 +270,36 @@ Available CSV columns:
         else:
             # Fallback: take everything after the prompt (rough approach)
             pandas_code = generated_text
-
-        # Clean up common formatting issues
-        pandas_code = pandas_code.replace("```python", "").replace("```", "").strip()
         
-        # Filter out non-code lines and extract only valid Python statements
-        code_lines = []
-        for line in pandas_code.split('\n'):
-            line = line.strip()
-            
-            # Skip empty lines
-            if not line:
-                continue
-            
-            # Skip lines that are clearly prompt echoes or text (not code)
-            skip_markers = [
-                'Headline:', 'Context:', 'Available CSV', 'RULES:', 'Example',
-                'FEW-SHOT', '---', '**Input:**', '**Generated Code:**',
-                'CSV Columns:', 'CSV Metadata', 'Analysis:', 'Pandas code:',
-                'You are a table', 'Output Format', 'Simple Breakdown', 'Complex breakdown'
-            ]
-            if any(line.startswith(marker) for marker in skip_markers):
-                continue
-            
-            # Skip lines that are just quoted strings without assignment
-            if line.startswith('"') and line.endswith('"') and '=' not in line:
-                continue
-            
-            # Skip markdown or comment headers
-            if line.startswith('#') and not line.startswith('# '):
-                continue
-            
-            # Keep lines that look like Python code
-            # Must contain Python operators or be valid statements
-            if any(pattern in line for pattern in ['=', '(', '[', 'import', 'df', 'pd.', 'result']):
-                code_lines.append(line)
+        # Remove obvious non-code headers from the start
+        lines = generated_text.split('\n')
+        code_start_idx = 0
         
-        pandas_code = '\n'.join(code_lines)
+        # Skip leading lines that are clearly not code
+        skip_markers = [
+            'Headline:', 'Context:', 'Available CSV', 'RULES:', 'Example',
+            'FEW-SHOT', '---', '**Input:**', '**Generated Code:**',
+            'CSV Columns:', 'CSV Metadata', 'Analysis:', 'Pandas code:',
+            'You are a table', 'Output Format', 'Simple Breakdown', 'Complex breakdown'
+        ]
+        
+        for i, line in enumerate(lines):
+            stripped = line.strip()
+            # If we hit a line that starts with actual Python code (comment or code), start there
+            if stripped and (stripped.startswith('#') or '=' in stripped or 'df' in stripped):
+                code_start_idx = i
+                break
+            # Skip obvious non-code lines
+            if any(stripped.startswith(marker) for marker in skip_markers):
+                continue
+        
+        pandas_code = '\n'.join(lines[code_start_idx:])
 
         # Final safety: If we got no code, return a safe placeholder
         if not pandas_code or len(pandas_code) < 10:
             print("⚠️ Warning: Could not extract valid code from LLM output")
+            print(f"Code length: {len(pandas_code)}")
+            print(f"Extracted code: '{pandas_code}'")
             print(f"Generated text preview: {generated_text[:500]}...")
             pandas_code = "result_df = df.head(10)  # Fallback: return first 10 rows"
 
@@ -280,42 +316,86 @@ Available CSV columns:
         - No exec/eval
         - Only pandas operations allowed
         """  
+        # Check for dangerous keywords in actual code (not comments)
+        # Remove comments and check each line
+        lines = code.split('\n')
+        code_lines = []
+        for line in lines:
+            # Remove comments
+            if '#' in line:
+                line = line[:line.index('#')]
+            code_lines.append(line.strip())
+        
+        code_no_comments = '\n'.join(code_lines).lower()
+        
+        # Check for actual import statements (at start of line)
+        if re.search(r'^\s*(import|from)\s+', code, re.MULTILINE):
+            print(f"⚠️ Unsafe code detected: contains import statement")
+            return False
+        
+        # Check for other dangerous keywords
         dangerous_keywords = [
-            'import', '__import__', 'eval', 'exec', 'compile',
+            '__import__', 'eval', 'exec', 'compile',
             'open', 'file', 'os.', 'sys.', 'subprocess',
             '__builtins__', '__globals__', '__locals__'
         ]  
 
-        code_lower = code.lower()
-
         for keyword in dangerous_keywords:
-            if keyword in code_lower:
-                print(f"⚠️ Unsafe code detected: contains '{keyword}'")
+            if keyword in code_no_comments:
+                print(f"Unsafe code detected: contains '{keyword}'")
                 return False
 
         # Try to parse as valid Python AST
         try:
             ast.parse(code)
         except SyntaxError as e:
-            print(f"⚠️ Invalid Python syntax: {e}")
+            print(f"Invalid Python syntax: {e}")
             return False
 
         return True
 
-    def _execute_pandas_safely(self, df: pd.DataFrame, pandas_code: str) -> pd.DataFrame:
+    def _execute_pandas_safely(self, df: pd.DataFrame, pandas_code: str, paragraph: str = "") -> pd.DataFrame:
         """
         Execute LLM-generated pandas code in a sandboxed environment.
 
         Security:
         - Code has already been validated
-        - Executed with minimal namespace (only df and pandas)
+        - Executed with minimal namespace (only df, pandas, and paragraph)
         - Result must be a DataFrame
         """
         # Create sandboxed namespace
+        # Allow safe builtins that pandas code might need
+        safe_builtins = {
+            'enumerate': enumerate,
+            'len': len,
+            'str': str,
+            'int': int,
+            'float': float,
+            'bool': bool,
+            'range': range,
+            'list': list,
+            'dict': dict,
+            'set': set,
+            'tuple': tuple,
+            'zip': zip,
+            'map': map,
+            'filter': filter,
+            'sum': sum,
+            'min': min,
+            'max': max,
+            'sorted': sorted,
+            'reversed': reversed,
+            'round': round,
+            'abs': abs,
+            'any': any,
+            'all': all
+        }
+        
         namespace = {
             'df': df,
             'pd': pd,
-            '__builtins__': {}  # Disable built-in functions
+            'paragraph': paragraph,
+            '__builtins__': safe_builtins
         }
         
         try:
@@ -337,7 +417,7 @@ Available CSV columns:
                 
             # Limit size for safety
             if len(result) > 1000:
-                print(f"⚠️ Extracted table too large ({len(result)} rows), limiting to 1000")
+                print(f"Extracted table too large ({len(result)} rows), limiting to 1000")
                 result = result.head(1000)
                 
             return result

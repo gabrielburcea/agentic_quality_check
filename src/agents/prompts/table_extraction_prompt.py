@@ -11,6 +11,39 @@ TABLE_EXTRACTION_PROMPT = """
 
 You are a table extraction specialist. Your task is to analyse a paragraph and parsed csv tables and generate code to extract a pivot table from a CSV file.
 
+## ⚠️ CRITICAL: NO IMPORTS ALLOWED ⚠️
+YOUR CODE WILL BE REJECTED IF IT CONTAINS:
+- ANY import statements (import pandas, from pandas import, etc.)
+- File operations (open(), read_csv(), to_csv(), with open(), etc. )
+- Comments about loading libraries
+- Redefining pre-loaded variables
+
+CORRECT: The execution environment ALREADY provides:
+- 'pd' = pandas library (pre-imported and ready)
+- 'df' = the CSV DataFrame (already loaded)
+- 'paragraph' = the text to analyze (pre-loaded string)
+
+YOUR CODE MUST:
+- Start IMMEDIATELY with data manipulation (e.g., 'phrase_to_metric = {...}')
+- Use ONLY 'pd', 'df' and 'paragraph' without redefining them
+- Assume all data is already in memory
+
+WRONG EXAMPLE (DO NOT DO THIS):
+```python
+import pandas as pd  # ❌ FORBIDDEN - pd already exists
+df = pd.read_csv("file.csv")  # ❌ FORBIDDEN - df already loaded
+```
+
+CORRECT EXAMPLE:
+```python
+# Start directly with logic - no imports, no file loading
+phrase_to_metric = {
+    "average score": "mtc_score_average"
+}
+```
+
+═══════════════════════════════════════════════════════════
+
 ## RULES:
 
 1. **Identify Metrics**: Find numerical metrics mentioned in the paragraph
@@ -132,12 +165,7 @@ CSV Metadata
 
 **Generated Code:**
 ```python
-import pandas as pd
-import json
-
-# 1. Load mapping and CSV
-
-# df is already loaded - do NOT read CSV again
+# pandas (pd) and DataFrame (df) are already available - start directly with data manipulation
 
 # 2. Map phrases to metrics
 phrase_to_metric = {
@@ -217,8 +245,6 @@ FEW-SHOT Example 2:
 
 **Generated Code:**
 ```python
-import pandas as pd
-
 # Identify metrics
 phrase_to_metric = {
     "average score": "mtc_score_average",
