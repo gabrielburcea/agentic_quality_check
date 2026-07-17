@@ -1,4 +1,11 @@
-"""
+SyntaxError: File "/Users/gabrielburcea/pyprojects/agentic_quality_check/src/ui/results_tab.py", line 54 results_dir "/tmp.extraction_results." # Output for downstream agents ^ SyntaxError: invalid syntax
+Traceback:
+File "/Users/gabrielburcea/pyprojects/agentic_quality_check/venv_qualcheck/lib/python3.12/site-packages/streamlit/runtime/scriptrunner/script_runner.py", line 534, in _run_script
+    exec(code, module.__dict__)
+File "/Users/gabrielburcea/pyprojects/agentic_quality_check/app.py", line 43, in <module>
+    from ui import render_mapping_tab
+File "/Users/gabrielburcea/pyprojects/agentic_quality_check/src/ui/__init__.py", line 33, in <module>
+    from .results_tab import render_results_tab"""
 Prompt Template for Table Extraction Agent
 
 Contains:
