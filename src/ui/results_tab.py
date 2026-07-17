@@ -31,6 +31,7 @@ if src_dir not in sys.path:
 from agents.table_extractor_agent import TableExtractorAgent
 from utils.table_extractor import TableExtractor
 
+
 def render_results_tab():
     """
     Main entry point for results/extraction tab

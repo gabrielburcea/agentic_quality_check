@@ -20,6 +20,19 @@ import streamlit as st
 import sys
 import os
 
+# Try to set API key from environment on app startup
+if "ANTHROPIC_API_KEY" not in os.environ:
+    try:
+        # Only works in Databricks notebook context
+        claude_key = dbutils.secrets.get(scope="my-api-keys", key="claude-api-key")
+        os.environ["ANTHROPIC_API_KEY"] = claude_key
+        print("✅ Claude API key loaded from secrets")
+    except:
+        # dbutils not available (running locally or in pure Streamlit)
+        print("⚠️ Running without dbutils - API key must be provided manually")
+        pass
+
+
 # Add src to path so we can import modules 
 current_dir = os.path.dirname(os.path.abspath(__file__))
 src_dir = os.path.join(current_dir, 'src')
@@ -157,8 +170,7 @@ with tab3:
 ########################################
 
 with tab4:
-    st.header("Verification Results")
-    st.info("Results dashboard will be built in layer 4 (Agent Orchestration)")
-    st.write("This tab will show:")
-    st.write("- Verification status for each mapped headline")
-    st.write("- A table with different columns from Pass/Fail results to Agent explanation to Suggested corrections")
+    # Import the results from tab renderer
+    from ui import render_results_tab
+    # Render the extraction interface
+    render_results_tab()
