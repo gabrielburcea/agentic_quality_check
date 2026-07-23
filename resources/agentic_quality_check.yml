@@ -1,0 +1,13 @@
+resources:
+  apps:
+    quality_check_app:
+      name: agentic-quality-check-${bundle.target}
+      description: "Multi-Agent RAG System for Document Quality Analysis"
+      
+      # Point to project root directory
+      source_code_path: /Workspace/Users/gb.burcea@gmail.com/agentic_quality_check
+      
+      # Permissions
+      permissions:
+        - user_name: gb.burcea@gmail.com
+          level: CAN_MANAGE

@@ -75,8 +75,15 @@ with tab1:
     )
 
     if uploaded_pdf:
-        # Save to temporary location
-        pdf_path = f"/tmp/{uploaded_pdf.name}"
+        # Import storage module
+        from utils.json_storage import JSONStorage
+        #Initialise storage
+        storage = JSONStorage()
+
+        # Save to Unity Catalog Volume (persistent!)
+        pdf_filename = uploaded_pdf.name.replace(".pdf", "")
+        volume_path = f"/Volumes/my_catalog/agentic_quality_check_dev/pdf_volume/{pdf_filename}"
+       
 
         with open(pdf_path, 'wb') as f:
             f.write(uploaded_pdf.getbuffer())
@@ -106,7 +113,9 @@ with tab2:
         csv_paths=[] 
 
         for uploaded_csv in uploaded_csvs:
-            csv_path = f"/tmp/{uploaded_csv.name}"
+            # Save to Unity Catalog Volume (persistent)
+            
+            csv_path = f"/Volumes/my_catalog/agentic_quality_check_dev/csvs_volume/{uploaded_csv.name}"
 
             with open(csv_path, 'wb') as f:
                 f.write(uploaded_csv.getbuffer())
@@ -123,7 +132,7 @@ with tab2:
         st.divider()
         st.subheader(f"Available CSV Files ({len(csv_paths)})")
         
-        from src.utils import get_csv_metadata
+        from utils import get_csv_metadata
         
         for i, csv_path in enumerate(csv_paths, 1):
             metadata = get_csv_metadata(csv_path)
